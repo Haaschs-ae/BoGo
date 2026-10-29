@@ -26,7 +26,8 @@ export interface HudReading {
   idle: number;
   stock: Resources;
   gatherers: Resources;
-  /** Villageois au travail sur une ressource + inactifs (les bâtisseurs n'apparaissent pas). */
+  /** Villageois comptés sur les ressources, ou inactifs s'ils sont plus nombreux
+   *  (les bâtisseurs n'apparaissent pas). */
   villagers: number;
 }
 
@@ -77,10 +78,11 @@ export function parseHud(tokens: OcrToken[]): HudReading | null {
   const idle = idleToken?.value ?? 0;
   const working = RESOURCES.reduce((sum, r) => sum + gatherers[r], 0);
   const population = Number(current);
-  // Le jeu peut compter un villageois inactif aussi sur sa dernière ressource : si le total
-  // dépasse la population, les inactifs recoupent les compteurs par ressource.
-  const villagers = working + idle <= population ? working + idle : Math.max(working, idle);
-  // Même ainsi plus de villageois que de population : lecture fausse.
+  // Le jeu compte un villageois inactif aussi sur sa dernière ressource (vérifié en partie :
+  // 9 inactifs, 6 nourriture + 3 bois) : additionner compterait deux fois. On prend le plus
+  // grand ; un villageois sorti du TC sans ralliement n'est compté qu'une fois au travail.
+  const villagers = Math.max(working, idle);
+  // Plus de villageois que de population : lecture fausse.
   if (villagers > population) return null;
   return { population, populationMax: Number(max), idle, stock, gatherers, villagers };
 }

@@ -55,7 +55,7 @@ describe("parseHud", () => {
       idle: 2,
       stock: { food: 150, wood: 85, gold: 40, stone: 0 },
       gatherers: { food: 7, wood: 3, gold: 0, stone: 0 },
-      villagers: 12,
+      villagers: 10,
     });
   });
 
@@ -64,7 +64,7 @@ describe("parseHud", () => {
     expect(parseHud(withLetterO)?.stock.wood).toBe(200);
   });
 
-  it("ne double pas les inactifs déjà comptés sur une ressource (capture réelle à 6:21)", () => {
+  it("ne compte pas deux fois les inactifs, déjà comptés sur leur ressource (capture réelle à 6:21)", () => {
     const tokens = [
       token("13/20", 42, 858, 90, 878),
       token("9", 146, 858, 157, 878),

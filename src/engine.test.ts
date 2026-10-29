@@ -25,7 +25,7 @@ const steps = [
 
 function reading(gatherers: Partial<Resources>, stock: Partial<Resources> = {}, idle = 0): HudReading {
   const g = { food: 0, wood: 0, gold: 0, stone: 0, ...gatherers };
-  const villagers = g.food + g.wood + g.gold + g.stone + idle;
+  const villagers = Math.max(g.food + g.wood + g.gold + g.stone, idle);
   return {
     population: villagers + 1,
     populationMax: 200,
