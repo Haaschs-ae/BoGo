@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrderStep, StepResources } from "./buildOrder";
-import { BuildEngine, goalCost, nextVillagerResources, stepGoal, villagerTarget } from "./engine";
+import { BuildEngine, goalCosts, nextVillagerResources, stepGoal, villagerTarget } from "./engine";
 import type { HudReading, Resources } from "./hud";
 
 function step(villagers: number, res: Partial<StepResources>, notes: string[] = [], age = 1): BuildOrderStep {
@@ -70,9 +70,26 @@ describe("analyse des étapes", () => {
     expect(nextVillagerResources(steps, 1)).toEqual({ wood: 3 });
   });
 
-  it("donne le coût du passage d'âge, en pierre pour les Mongols", () => {
-    expect(goalCost({ kind: "age", age: 2 }, "English")).toEqual({ food: 400, gold: 200 });
-    expect(goalCost({ kind: "age", age: 2 }, "Mongols")).toEqual({ food: 400, stone: 200 });
+  it("donne les coûts de la civ d'après les données d'AoE4World", () => {
+    expect(goalCosts({ kind: "age", age: 2 }, "English")).toEqual([{ food: 400, gold: 200 }]);
+    expect(goalCosts({ kind: "age", age: 2 }, "Ayyubids")).toContainEqual({ food: 200, gold: 100 });
+    expect(goalCosts({ kind: "tc" }, "Mongols")).toEqual([{ wood: 750 }]);
+    expect(goalCosts({ kind: "tc" }, "Malians")).toEqual([{ wood: 400, gold: 350 }]);
+    expect(goalCosts({ kind: "villagers" }, "English")).toEqual([]);
+  });
+
+  it("reconnaît un TC moins cher (technologie) et l'aile Advancement des Ayyoubides", () => {
+    const tcEngine = new BuildEngine(steps, "Golden Horde");
+    tcEngine.setStep(4);
+    feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 600 }), 0, 4);
+    expect(feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 120 }), 4000, 3).index).toBe(5);
+
+    const ayyubids = new BuildEngine(steps, "Ayyubids");
+    ayyubids.setStep(2);
+    let state = feed(ayyubids, reading({ food: 7, wood: 3, gold: 3 }, { food: 230, gold: 110 }), 0, 4);
+    expect(state.affordable).toBe(true);
+    state = feed(ayyubids, reading({ food: 7, wood: 3, gold: 3 }, { food: 30, gold: 10 }), 4000, 3);
+    expect(state.index).toBe(3);
   });
 });
 

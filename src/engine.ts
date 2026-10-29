@@ -8,19 +8,18 @@
 // Un changement d'étape à la main est respecté jusqu'au prochain nouveau villageois.
 
 import type { BuildOrderStep } from "./buildOrder";
+import { civilizationId } from "./civs";
+import costs from "./data/costs.json";
 import { RESOURCES, type HudReading, type Resource, type Resources } from "./hud";
 
 export type StepGoal = { kind: "villagers" } | { kind: "age"; age: number } | { kind: "tc" };
 
 export const AGE_NAMES: Record<number, string> = { 2: "II · Féodal", 3: "III · Château", 4: "IV · Impérial" };
 
-// Coûts habituels ; les Mongols paient en pierre au lieu de l'or.
-const AGE_COSTS: Record<number, Partial<Resources>> = {
-  2: { food: 400, gold: 200 },
-  3: { food: 1200, gold: 600 },
-  4: { food: 2400, gold: 1200 },
-};
-const TC_COST: Partial<Resources> = { wood: 400, stone: 300 };
+type Cost = Partial<Resources>;
+// Coûts par civ, extraits des données d'AoE4World (scripts/extract_costs.py).
+const COSTS = costs as Record<string, { townCenter: Cost | null; ages: Record<string, Cost[]> }>;
+const DEFAULT_COSTS = COSTS.english;
 
 const LANDMARK_NOTE = /landmark_|age\/age_|age up|aging|passe[rz]? (l'|à l')?[âa]ge|monument/i;
 const TC_IMAGE = /town-?center\.webp/i;
@@ -64,15 +63,13 @@ function ageTransitionAt(steps: BuildOrderStep[], index: number): number | null 
   return null;
 }
 
-export function goalCost(goal: StepGoal, civilization: string): Partial<Resources> | null {
-  if (goal.kind === "tc") return TC_COST;
-  if (goal.kind !== "age") return null;
-  const cost = { ...AGE_COSTS[goal.age] };
-  if (/mongol/i.test(civilization) && cost.gold) {
-    cost.stone = cost.gold;
-    delete cost.gold;
-  }
-  return cost;
+/** Coûts possibles de l'objectif pour cette civ (plusieurs landmarks ou technologies
+ *  de passage d'âge), du plus courant au moins courant. */
+export function goalCosts(goal: StepGoal, civilization: string): Cost[] {
+  const civ = COSTS[civilizationId(civilization) ?? ""] ?? DEFAULT_COSTS;
+  if (goal.kind === "tc") return civ.townCenter ? [civ.townCenter] : [];
+  if (goal.kind === "age") return civ.ages[goal.age] ?? DEFAULT_COSTS.ages[goal.age] ?? [];
+  return [];
 }
 
 /** Ressources vers lesquelles partent les prochains villageois de l'étape. */
@@ -96,8 +93,9 @@ export interface Misplacement {
 export interface EngineState {
   index: number;
   goal: StepGoal;
-  cost: Partial<Resources> | null;
-  /** Toutes les ressources du coût sont en stock. */
+  /** Coût habituel de l'objectif (le plus courant pour la civ). */
+  cost: Cost | null;
+  /** Les ressources de l'une des options de l'objectif sont en stock. */
   affordable: boolean;
   villagers: number | null;
   misplacement: Misplacement | null;
@@ -106,6 +104,8 @@ export interface EngineState {
 const CONFIRM_READINGS = 2;
 const MISPLACEMENT_SECONDS = 3;
 const SPEND_RATIO = 0.75;
+/** Le TC peut coûter moins cher après certaines technologies : seuil plus bas. */
+const TC_SPEND_RATIO = 0.6;
 /** Si le clic n'a pas été vu, on avance quand même après ce nombre de villageois en plus. */
 const FALLBACK_EXTRA_VILLAGERS = 4;
 
@@ -142,14 +142,14 @@ export class BuildEngine {
 
   state(now = Date.now()): EngineState {
     const goal = stepGoal(this.steps, this.index);
-    const cost = goalCost(goal, this.civilization);
+    const options = goalCosts(goal, this.civilization);
     const stock = this.last?.stock;
     const affordable =
-      !!cost && !!stock && Object.entries(cost).every(([r, n]) => stock[r as Resource] >= (n ?? 0));
+      !!stock && options.some((cost) => Object.entries(cost).every(([r, n]) => stock[r as Resource] >= (n ?? 0)));
     return {
       index: this.index,
       goal,
-      cost,
+      cost: options[0] ?? null,
       affordable,
       villagers: this.villagers,
       misplacement: this.checkMisplacement(now),
@@ -182,16 +182,19 @@ export class BuildEngine {
     if (recent.length < 2 || older.length === 0) return;
     const drop = (r: Resource) =>
       Math.min(...older.map((h) => h.stock[r])) - Math.max(...recent.map((h) => h.stock[r]));
-    const paid = (cost: Partial<Resources>) =>
-      Object.entries(cost).every(([r, n]) => drop(r as Resource) >= SPEND_RATIO * (n ?? 0));
+    const paid = (cost: Cost, ratio: number) =>
+      Object.entries(cost).every(([r, n]) => drop(r as Resource) >= ratio * (n ?? 0));
 
     // Le joueur peut cliquer un peu avant ou après l'étape prévue : on regarde les prochaines étapes.
     for (let i = this.index; i < Math.min(this.index + 3, this.steps.length); i++) {
       const goal = stepGoal(this.steps, i);
-      const cost = goalCost(goal, this.civilization);
-      // Pour un TC, seule la grosse dépense de bois compte (le coût en pierre varie selon les civs).
-      const required = goal.kind === "tc" ? { wood: TC_COST.wood } : cost;
-      if (required && paid(required)) {
+      const options = goalCosts(goal, this.civilization);
+      // Pour un TC, seule la plus grosse ressource du coût compte, avec un seuil plus bas.
+      const done =
+        goal.kind === "tc"
+          ? options.some((cost) => paid(Object.fromEntries([largest(cost)]), TC_SPEND_RATIO))
+          : options.some((cost) => paid(cost, SPEND_RATIO));
+      if (done) {
         this.index = Math.min(i + 1, this.steps.length - 1);
         this.floor = 0;
         this.history = [];
@@ -222,4 +225,8 @@ export class BuildEngine {
     if (now - this.misplacedSince.at < MISPLACEMENT_SECONDS * 1000) return null;
     return { from, to, count };
   }
+}
+
+function largest(cost: Cost): [Resource, number] {
+  return (Object.entries(cost) as [Resource, number][]).sort((a, b) => b[1] - a[1])[0];
 }

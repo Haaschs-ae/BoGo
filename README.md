@@ -54,9 +54,11 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
   - Sur une étape « passe l'âge » ou « construis un TC », BoGo attend : un bandeau
     montre les ressources qu'il manque, puis devient vert et clignote quand tu as de
     quoi cliquer. L'étape suivante s'affiche quand les ressources sont dépensées d'un
-    coup (clic sur le monument, TC posé). Coûts habituels : Féodal 400 🍖 / 200 🪙,
-    Château 1200 / 600, Impérial 2400 / 1200 (pierre au lieu de l'or pour les Mongols),
-    TC 400 🪵 / 300 🪨.
+    coup (clic sur le monument, TC posé). Les coûts viennent des données d'AoE4World
+    pour chaque civ (`src/data/costs.json`, régénéré par `scripts/extract_costs.py`) :
+    landmarks ou technologies de passage d'âge (ailes abbassides et ayyoubides,
+    commanderies templières…), TC à 750 bois pour les Mongols et Golden Horde, etc.
+    Un TC rendu moins cher par une technologie est aussi reconnu.
   - Chaque ressource affiche villageois en jeu / visés. Un villageois de trop sur une
     ressource pendant plus de 3 secondes déclenche une alerte (« 1 vil de trop sur 🍖
     → envoie-le sur 🪙 »), tout comme les villageois inactifs.
@@ -132,6 +134,8 @@ La compilation de l'appli Mac est faite par GitHub Actions (`.github/workflows/b
 
 - [aoe4world/overlay](https://github.com/aoe4world/overlay) : détection de la partie via l'API AoE4World ;
   les drapeaux des civilisations viennent de ce projet (licence MIT).
+- [aoe4world/data](https://github.com/aoe4world/data) (licence MIT) : coûts des TC et des passages d'âge.
 - [FluffyMaguro/AoE4_Overlay](https://github.com/FluffyMaguro/AoE4_Overlay) : overlay de partie et de BO.
 - [CraftySalamander/RTS_Overlay](https://github.com/CraftySalamander/RTS_Overlay) : format de BO, raccourcis globaux, mode chrono.
-  Les icônes du jeu affichées dans les consignes sont chargées depuis son site.
+  Les icônes du jeu (consignes des BO, ressources, villageois, âges, TC) sont chargées depuis
+  son site ; hors ligne, BoGo affiche des emojis à la place.

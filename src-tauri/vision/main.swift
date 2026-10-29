@@ -4,6 +4,7 @@
 // lit l'horloge en haut au centre et le panneau en bas à gauche (Vision), et écrit
 // une ligne JSON par événement sur la sortie standard :
 //   {"type":"clock","seconds":125,"text":"02:05"}
+//   {"type":"top","tokens":[…]}   (textes lus en haut au centre : âge, passage d'âge en cours…)
 //   {"type":"hud","tokens":[{"text":"7/10","x":0.2,"y":0.1,"w":0.1,"h":0.05}, …]}
 //     (textes lus dans le panneau, positions en fraction de la zone, origine en haut à gauche ;
 //      BoGo en déduit population, ressources et villageois par ressource)
@@ -87,8 +88,17 @@ func recognizeText(in image: CGImage, area: CGRect) -> [VNRecognizedTextObservat
     return request.results ?? []
 }
 
-func readClock(in image: CGImage) -> (seconds: Int, text: String)? {
-    for observation in recognizeText(in: image, area: clockArea) {
+func tokens(_ observations: [VNRecognizedTextObservation]) -> [[String: Any]] {
+    observations.compactMap { observation in
+        guard let text = observation.topCandidates(1).first?.string else { return nil }
+        // Vision place l'origine en bas à gauche : on la ramène en haut à gauche.
+        let box = observation.boundingBox
+        return ["text": text, "x": box.minX, "y": 1 - box.maxY, "w": box.width, "h": box.height]
+    }
+}
+
+func readClock(_ observations: [VNRecognizedTextObservation]) -> (seconds: Int, text: String)? {
+    for observation in observations {
         for candidate in observation.topCandidates(3) {
             for token in candidate.string.split(whereSeparator: \.isWhitespace) {
                 if let seconds = parseClock(String(token)) { return (seconds, String(token)) }
@@ -96,15 +106,6 @@ func readClock(in image: CGImage) -> (seconds: Int, text: String)? {
         }
     }
     return nil
-}
-
-func readHud(in image: CGImage) -> [[String: Any]] {
-    recognizeText(in: image, area: hudArea).compactMap { observation in
-        guard let text = observation.topCandidates(1).first?.string else { return nil }
-        // Vision place l'origine en bas à gauche : on la ramène en haut à gauche.
-        let box = observation.boundingBox
-        return ["text": text, "x": box.minX, "y": 1 - box.maxY, "w": box.width, "h": box.height]
-    }
 }
 
 func run() async {
@@ -121,13 +122,15 @@ func run() async {
         do {
             if let window = try await findGeForceNowWindow() {
                 let image = try await capture(window)
-                if let clock = readClock(in: image) {
+                let top = recognizeText(in: image, area: clockArea)
+                emit(["type": "top", "tokens": tokens(top)])
+                if let clock = readClock(top) {
                     emitStatus("ok")
                     emit(["type": "clock", "seconds": clock.seconds, "text": clock.text])
                 } else {
                     emitStatus("no_clock")
                 }
-                emit(["type": "hud", "tokens": readHud(in: image)])
+                emit(["type": "hud", "tokens": tokens(recognizeText(in: image, area: hudArea))])
             } else {
                 emitStatus("no_window")
             }

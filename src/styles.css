@@ -480,3 +480,11 @@ button.wide {
   border-color: var(--accent);
   font-weight: 500;
 }
+
+.chip .icon,
+.goal .icon,
+.alert .icon,
+.next-vils .icon {
+  height: 1.2em;
+  margin: 0 1px;
+}

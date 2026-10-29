@@ -20,8 +20,10 @@ export const CIVILIZATION_NAMES: Record<string, string> = {
   order_of_the_dragon: "Order of the Dragon",
   ottomans: "Ottomans",
   rus: "Rus",
+  scots: "Scots",
   sengoku_daimyo: "Sengoku Daimyo",
   tughlaq_dynasty: "Tughlaq Dynasty",
+  vikings: "Vikings",
   zhu_xis_legacy: "Zhu Xi's Legacy",
 };
 

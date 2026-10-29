@@ -61,6 +61,7 @@ interface Settings {
 type VisionEvent =
   | { type: "clock"; seconds: number; text: string }
   | { type: "hud"; tokens: OcrToken[] }
+  | { type: "top"; tokens: OcrToken[] }
   | { type: "status"; code: "ok" | "no_window" | "no_clock" }
   | { type: "error"; code: string; message: string }
   | { type: "stopped" };
@@ -116,12 +117,15 @@ const state: State = {
 const clock = new ClockTracker();
 /** Moteur du BO en cours, recréé à chaque lancement d'un BO. */
 let engine: BuildEngine | null = null;
-const RESOURCE_ICONS: Record<Resource, [string, string]> = {
-  food: ["🍖", "nourriture"],
-  wood: ["🪵", "bois"],
-  gold: ["🪙", "or"],
-  stone: ["🪨", "pierre"],
+// Icône du jeu (même jeu d'icônes que les BO aoe4guides), emoji et nom en français.
+const RESOURCE_ICONS: Record<Resource, [string, string, string]> = {
+  food: ["🍖", "nourriture", "resource/resource_food.webp"],
+  wood: ["🪵", "bois", "resource/resource_wood.webp"],
+  gold: ["🪙", "or", "resource/resource_gold.webp"],
+  stone: ["🪨", "pierre", "resource/resource_stone.webp"],
 };
+const VILLAGER_ICON = "unit_worker/villager.webp";
+const TC_ICON = "building_economy/town-center.webp";
 restoreSession();
 resetEngine();
 
@@ -286,7 +290,14 @@ async function startVision() {
   }
 }
 
+/** Texte lu en haut au centre (âge, passage d'âge en cours), affiché dans les réglages. */
+let topText = "";
+
 function onVision(event: VisionEvent) {
+  if (event.type === "top") {
+    topText = event.tokens.map((t) => t.text).join(" ");
+    return;
+  }
   if (event.type === "hud") {
     const reading = parseHud(event.tokens);
     if (!reading) return;
@@ -444,12 +455,14 @@ function playView(saved: SavedBuild): HTMLElement {
 /** « Passe à l'âge II » ou « Construis un TC », avec les ressources qui manquent. */
 function goalBanner(auto: EngineState, hud: HudReading): HTMLElement {
   const title =
-    auto.goal.kind === "age" ? `⬆ Passe à l'âge ${AGE_NAMES[auto.goal.age] ?? auto.goal.age}` : "🏰 Construis un TC";
-  const banner = h("div", auto.affordable ? "goal ready" : "goal", h("strong", "", title));
+    auto.goal.kind === "age"
+      ? h("strong", "", gameIcon(`age/age_${auto.goal.age}.webp`, "⬆"), ` Passe à l'âge ${AGE_NAMES[auto.goal.age] ?? auto.goal.age}`)
+      : h("strong", "", gameIcon(TC_ICON, "🏰"), " Construis un TC");
+  const banner = h("div", auto.affordable ? "goal ready" : "goal", title);
   const costs = h("div", "goal-costs");
   for (const [r, amount] of Object.entries(auto.cost ?? {}) as [Resource, number][]) {
     const have = hud.stock[r];
-    const chip = h("span", have >= amount ? "chip ok" : "chip", `${RESOURCE_ICONS[r][0]} ${have}/${amount}`);
+    const chip = h("span", have >= amount ? "chip ok" : "chip", resourceIcon(r), ` ${have}/${amount}`);
     chip.title = RESOURCE_ICONS[r][1];
     costs.append(chip);
   }
@@ -461,55 +474,77 @@ function alerts(auto: EngineState, hud: HudReading): HTMLElement[] {
   const list: HTMLElement[] = [];
   const m = auto.misplacement;
   if (m) {
-    const [fromIcon, fromName] = RESOURCE_ICONS[m.from];
     const vils = m.count > 1 ? `${m.count} vils` : "1 vil";
     const move = m.count > 1 ? "envoie-les" : "envoie-le";
-    const text = m.to
-      ? `⚠ ${vils} de trop sur ${fromIcon} ${fromName} → ${move} sur ${RESOURCE_ICONS[m.to][0]} ${RESOURCE_ICONS[m.to][1]}`
-      : `⚠ ${vils} de trop sur ${fromIcon} ${fromName}`;
-    list.push(h("div", "alert", text));
+    const alert = h("div", "alert", `⚠ ${vils} de trop sur `, resourceLabel(m.from));
+    if (m.to) alert.append(` → ${move} sur `, resourceLabel(m.to));
+    list.push(alert);
   }
-  if (hud.idle > 0) list.push(h("div", "alert warn", `💤 ${hud.idle} vil${hud.idle > 1 ? "s" : ""} inactif${hud.idle > 1 ? "s" : ""}`));
+  if (hud.idle > 0) {
+    const plural = hud.idle > 1 ? "s" : "";
+    list.push(h("div", "alert warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} vil${plural} inactif${plural}`));
+  }
   return list;
 }
 
 function nextVillagersHint(steps: BuildOrderStep[]): HTMLElement | null {
-  const parts = (Object.entries(nextVillagerResources(steps, state.step)) as [Resource, number][]).map(
-    ([r, n]) => `${RESOURCE_ICONS[r][0]} ${RESOURCE_ICONS[r][1]} (+${n})`,
-  );
-  return parts.length ? h("div", "next-vils", `Prochains vils → ${parts.join(", ")}`) : null;
+  const entries = Object.entries(nextVillagerResources(steps, state.step)) as [Resource, number][];
+  if (!entries.length) return null;
+  const hint = h("div", "next-vils", "Prochains vils → ");
+  entries.forEach(([r, n], i) => hint.append(i ? ", " : "", resourceLabel(r), ` (+${n})`));
+  return hint;
 }
 
 function targets(step: BuildOrderStep, hud: HudReading | null): HTMLElement {
   const row = h("div", "targets");
-  const chip = (text: string, title: string, className = "chip") => {
-    const c = h("span", className, text);
+  const chip = (content: (Node | string)[], title: string, className = "chip") => {
+    const c = h("span", className, ...content);
     c.title = title;
     row.append(c);
   };
-  if (step.time) chip(`🕒 ${step.time}`, "Temps visé");
+  if (step.time) chip([`🕒 ${step.time}`], "Temps visé");
   const vilTarget = villagerTarget(step);
-  if (hud) chip(`👤 ${hud.villagers}/${vilTarget}`, "Villageois : en jeu / visés", hud.villagers >= vilTarget ? "chip ok" : "chip");
-  else if (vilTarget > 0) chip(`👤 ${vilTarget}`, "Villageois visés");
+  const vil = gameIcon(VILLAGER_ICON, "👤");
+  if (hud) chip([vil, ` ${hud.villagers}/${vilTarget}`], "Villageois : en jeu / visés", hud.villagers >= vilTarget ? "chip ok" : "chip");
+  else if (vilTarget > 0) chip([vil, ` ${vilTarget}`], "Villageois visés");
 
   for (const r of RESOURCES) {
     const target = step.resources[r];
     // -1 signifie « non précisé » dans le format RTS_Overlay.
     if (target === -1) continue;
-    const [icon, name] = RESOURCE_ICONS[r];
+    const name = RESOURCE_ICONS[r][1];
     if (!hud) {
-      chip(`${icon} ${target}`, name);
+      chip([resourceIcon(r), ` ${target}`], name);
       continue;
     }
     const have = hud.gatherers[r];
     if (have === 0 && target === 0) continue;
     const status = have > target ? "chip over" : have === target ? "chip ok" : "chip";
-    chip(`${icon} ${have}/${target}`, `${name} : villageois en jeu / visés`, status);
+    chip([resourceIcon(r), ` ${have}/${target}`], `${name} : villageois en jeu / visés`, status);
   }
   const builder = step.resources.builder;
-  if (builder !== undefined && builder > 0) chip(`🔨 ${builder}`, "Bâtisseurs");
-  if (step.age > 0) chip(`Âge ${["I", "II", "III", "IV"][step.age - 1] ?? step.age}`, "Âge", "chip age");
+  if (builder !== undefined && builder > 0) chip([`🔨 ${builder}`], "Bâtisseurs");
+  if (step.age > 0) chip([gameIcon(`age/age_${step.age}.webp`, "Âge"), ` ${["I", "II", "III", "IV"][step.age - 1] ?? step.age}`], "Âge", "chip age");
   return row;
+}
+
+function resourceIcon(r: Resource): HTMLElement {
+  return gameIcon(RESOURCE_ICONS[r][2], RESOURCE_ICONS[r][0]);
+}
+
+/** Icône et nom de la ressource : « [icône] bois ». */
+function resourceLabel(r: Resource): HTMLElement {
+  return h("span", "", resourceIcon(r), ` ${RESOURCE_ICONS[r][1]}`);
+}
+
+/** Icône du jeu ; si elle ne charge pas (hors ligne), l'emoji de remplacement. */
+function gameIcon(path: string, fallback: string): HTMLElement {
+  const img = document.createElement("img");
+  img.className = "icon";
+  img.src = ICON_BASE + path;
+  img.alt = fallback;
+  img.onerror = () => img.replaceWith(fallback);
+  return img;
 }
 
 function notes(lines: string[], className: string): HTMLElement {
@@ -648,6 +683,7 @@ function visionText(): string {
     parts.push(`${r.villagers} villageois (${gatherers}, ${r.idle} inactif${r.idle > 1 ? "s" : ""})`);
     parts.push(`stock ${RESOURCES.map((res) => `${RESOURCE_ICONS[res][0]}${r.stock[res]}`).join(" ")}`);
   }
+  if (topText) parts.push(`en haut : « ${topText} »`);
   if (parts.length) return `Lu à l'écran : ${parts.join(" · ")}.`;
   return VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
 }

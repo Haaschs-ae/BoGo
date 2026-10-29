@@ -1,0 +1,695 @@
+{
+  "abbasid_dynasty": {
+    "name": "Abbasid Dynasty",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "ayyubids": {
+    "name": "Ayyubids",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        },
+        {
+          "food": 200,
+          "gold": 100
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        },
+        {
+          "food": 850,
+          "gold": 500
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        },
+        {
+          "food": 1350,
+          "gold": 700
+        }
+      ]
+    }
+  },
+  "byzantines": {
+    "name": "Byzantines",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "chinese": {
+    "name": "Chinese",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "delhi_sultanate": {
+    "name": "Delhi Sultanate",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "english": {
+    "name": "English",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "french": {
+    "name": "French",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "golden_horde": {
+    "name": "Golden Horde",
+    "townCenter": {
+      "wood": 750
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "holy_roman_empire": {
+    "name": "Holy Roman Empire",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        },
+        {
+          "food": 2160,
+          "gold": 1080
+        }
+      ]
+    }
+  },
+  "house_of_lancaster": {
+    "name": "House of Lancaster",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "japanese": {
+    "name": "Japanese",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "jeanne_darc": {
+    "name": "Jeanne d'Arc",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "jin_dynasty": {
+    "name": "Jin Dynasty",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "knights_templar": {
+    "name": "Knights Templar",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "macedonian_dynasty": {
+    "name": "Macedonian Dynasty",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "malians": {
+    "name": "Malians",
+    "townCenter": {
+      "wood": 400,
+      "gold": 350
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "mongols": {
+    "name": "Mongols",
+    "townCenter": {
+      "wood": 750
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "order_of_the_dragon": {
+    "name": "Order of the Dragon",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        },
+        {
+          "food": 2160,
+          "gold": 1080
+        }
+      ]
+    }
+  },
+  "ottomans": {
+    "name": "Ottomans",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "rus": {
+    "name": "Rus",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "scots": {
+    "name": "Scots",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "sengoku_daimyo": {
+    "name": "Sengoku Daimyo",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "tughlaq_dynasty": {
+    "name": "Tughlaq Dynasty",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "vikings": {
+    "name": "Vikings",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  },
+  "zhu_xis_legacy": {
+    "name": "Zhu Xi's Legacy",
+    "townCenter": {
+      "wood": 400,
+      "stone": 300
+    },
+    "ages": {
+      "2": [
+        {
+          "food": 400,
+          "gold": 200
+        }
+      ],
+      "3": [
+        {
+          "food": 1200,
+          "gold": 600
+        }
+      ],
+      "4": [
+        {
+          "food": 2400,
+          "gold": 1200
+        }
+      ]
+    }
+  }
+}
