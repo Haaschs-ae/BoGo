@@ -1,66 +1,66 @@
 // Ce que l'overlay met en avant, déduit de l'étape du BO et du panneau du jeu.
 
 import { imageLabel, type BuildOrderStep, type StepResources } from "./buildOrder";
+import { applyMoves, distributionReached, plannedBuilders, plannedMoves } from "./distribution";
+import { effectiveVillagerTargets, nextVillagerResources } from "./engine";
 import { RESOURCES, type Resource, type Resources } from "./hud";
 import { translateTerm } from "./translate";
 
 export interface VillagerFocus {
   /** Ressource du prochain villageois, ou « build » : il part construire (bâtisseur prévu). */
   resource: Resource | "build";
-  /** Étape d'où vient la consigne (l'étape en cours, ou la suivante si elle est faite). */
+  /** Étape d'où vient la consigne : l'étape en cours, ou une étape suivante. */
   stepIndex: number;
 }
 
 /**
  * Où envoyer le PROCHAIN villageois produit (le point de ralliement du TC).
  *
- * Avec le panneau, on suppose faits les déplacements que l'alerte demande (les villageois en
- * trop vont là où il en manque) : ce qui manque encore à l'étape revient aux villageois à
- * produire pour elle. S'il n'en reste plus à produire (`toProduce` ≤ 0), ou si la répartition
- * est faite, le prochain villageois est pour l'étape suivante. Sans le panneau : ce que
- * l'étape ajoute à la précédente.
+ * Avec le panneau, on suppose faits les déplacements que l'alerte demande (`plannedMoves`).
+ * Tant que l'étape attend des villageois, ou que sa répartition n'est pas faite (le moteur y
+ * reste alors), le prochain va à ce qui lui manque encore. Sinon, il appartient à la première
+ * étape qui demande plus de villageois qu'il n'y en a : les étapes sans nouveau villageois entre
+ * les deux (déplacements, bâtiment, passage d'âge) donnent la répartition de départ, et une
+ * étape qui n'ajoute que des bâtisseurs donne « build ». Sans le panneau : ce que l'étape
+ * ajoute à la précédente.
  */
 export function villagerFocus(
   steps: BuildOrderStep[],
   index: number,
   gatherers: Resources | null,
-  toProduce: number | null = null,
+  villagers: number | null = null,
 ): VillagerFocus | null {
   const target = steps[index].resources;
   if (!gatherers) {
-    const added = missing(target, previousResources(steps, index));
-    return added.length ? { resource: added[0], stepIndex: index } : null;
+    const added = (Object.entries(nextVillagerResources(steps, index)) as [Resource, number][]).sort((a, b) => b[1] - a[1]);
+    return added.length ? { resource: added[0][0], stepIndex: index } : null;
   }
-  const fixed = afterMoves(target, gatherers);
-  const producing = toProduce === null || toProduce > 0;
+  const targets = effectiveVillagerTargets(steps);
+  const fixed = applyMoves(gatherers, plannedMoves(target, gatherers));
+  const producing = villagers === null || villagers < targets[index];
   const now = missing(target, fixed);
-  if (producing && now.length) return { resource: now[0], stepIndex: index };
-  // Répartition faite mais villageois encore à produire : ce sont les bâtisseurs prévus.
-  if (producing && (target.builder ?? 0) > 0) return { resource: "build", stepIndex: index };
-  const next = steps[index + 1];
-  if (!next) return null;
-  // Le joueur aura corrigé la répartition : on part de la cible de l'étape en cours.
-  const base = { ...fixed };
-  for (const r of RESOURCES) base[r] = Math.max(base[r], target[r]);
-  const later = missing(next.resources, base);
-  return later.length ? { resource: later[0], stepIndex: index + 1 } : null;
+  if (now.length && (producing || !distributionReached(target, fixed))) return { resource: now[0], stepIndex: index };
+  if (producing && plannedBuilders(target) > 0) return { resource: "build", stepIndex: index };
+
+  const count = Math.max(villagers ?? 0, targets[index]);
+  // Le joueur aura fait la répartition de l'étape : on part de là.
+  let base = settle(fixed, target);
+  for (let j = index + 1; j < steps.length; j++) {
+    const step = steps[j].resources;
+    if (targets[j] > count) {
+      const need = missing(step, base);
+      if (need.length) return { resource: need[0], stepIndex: j };
+      return plannedBuilders(step) > plannedBuilders(steps[j - 1].resources) ? { resource: "build", stepIndex: j } : null;
+    }
+    base = settle(base, step);
+  }
+  return null;
 }
 
-/**
- * Répartition une fois corrigée : les villageois en trop (au-delà des bâtisseurs prévus, qui
- * récoltent en attendant) vont aux ressources où il en manque le plus. Même règle que l'alerte.
- */
-function afterMoves(target: StepResources, have: Resources): Resources {
+/** Répartition une fois l'étape faite : ses cibles, et ce qu'on a pour une cible non précisée. */
+function settle(have: Resources, target: StepResources): Resources {
   const out = { ...have };
-  const counted = RESOURCES.filter((r) => target[r] >= 0);
-  const excess = counted.reduce((sum, r) => sum + Math.max(0, have[r] - target[r]), 0);
-  let movable = Math.max(0, excess - Math.max(0, target.builder ?? 0));
-  const short = counted.filter((r) => have[r] < target[r]).sort((a, b) => target[b] - have[b] - (target[a] - have[a]));
-  for (const r of short) {
-    const take = Math.min(movable, target[r] - out[r]);
-    out[r] += take;
-    movable -= take;
-  }
+  for (const r of RESOURCES) if (target[r] >= 0) out[r] = target[r];
   return out;
 }
 
@@ -71,10 +71,65 @@ function missing(target: StepResources, have: Resources): Resource[] {
   );
 }
 
-function previousResources(steps: BuildOrderStep[], index: number): Resources {
-  const previous = index > 0 ? steps[index - 1].resources : null;
-  const value = (r: Resource) => Math.max(0, previous?.[r] ?? 0);
-  return { food: value("food"), wood: value("wood"), gold: value("gold"), stone: value("stone") };
+export interface HeroModel {
+  /** Ressource du prochain villageois ; null : il part construire. */
+  resource: Resource | null;
+  stepIndex: number;
+  /** Icône de la tuile (source de nourriture, ressource, bâtiment à construire). */
+  icon: string | null;
+  /** Le mot en grand : « BOIS », « MOUTONS », « CONSTRUCTION ». */
+  word: string;
+  /** Bâtiment à construire, en toutes lettres (sous « CONSTRUCTION »). */
+  detail: string | null;
+  /** Bâtiment de dépôt que le villageois pose en arrivant (villageois d'une étape suivante). */
+  dropOff: IconLabel | null;
+  /** Icônes déjà nommées en grand : leur nom n'est pas répété dans les consignes. */
+  named: string[];
+}
+
+/**
+ * Le bloc « Prochain villageois », sans chiffre : les chiffres sont dans les barres (réel /
+ * cible) et dans les consignes (total du BO). Chaque nom une seule fois à l'écran.
+ */
+export function heroModel(
+  steps: BuildOrderStep[],
+  index: number,
+  gatherers: Resources | null,
+  villagers: number | null,
+): HeroModel | null {
+  const focus = villagerFocus(steps, index, gatherers, villagers);
+  if (!focus) return null;
+  const step = steps[focus.stepIndex];
+  if (focus.resource === "build") {
+    const building = stepBuilderTarget(step);
+    return {
+      resource: null,
+      stepIndex: focus.stepIndex,
+      icon: building?.path ?? null,
+      word: "CONSTRUCTION",
+      detail: building?.label ?? null,
+      dropOff: null,
+      named: building ? [building.path] : [],
+    };
+  }
+  const r = focus.resource;
+  const source = r === "food" ? foodSource(step) : null;
+  const icon = source?.path ?? `resource/resource_${r}.webp`;
+  const named = source ? [source.path] : [];
+  // Villageois d'une étape suivante (ses consignes ne sont pas affichées) : il pose le bâtiment
+  // de dépôt de sa ressource, si le BO ne l'a pas déjà fait construire avant.
+  let dropOff = focus.stepIndex !== index ? stepDropOff(step, r) : null;
+  if (dropOff && steps.slice(0, focus.stepIndex).some((s) => imagesOf(s).includes(dropOff!.path))) dropOff = null;
+  if (dropOff) named.push(dropOff.path);
+  return {
+    resource: r,
+    stepIndex: focus.stepIndex,
+    icon,
+    word: (source?.label ?? iconLabel(icon)).toUpperCase(),
+    detail: null,
+    dropOff,
+    named,
+  };
 }
 
 export interface IconLabel {
@@ -118,6 +173,13 @@ export function stepDropOff(step: BuildOrderStep, resource: Resource): IconLabel
   const path = imagesOf(step).find(
     (p) => p.startsWith("building_") && DROP_OFFS.some(([name, res]) => name.test(p) && res.includes(resource)),
   );
+  return path ? { path, label: iconLabel(path) } : null;
+}
+
+/** Bâtiment des bâtisseurs prévus : le premier cité qui n'est pas un dépôt de ressource. */
+export function stepBuilderTarget(step: BuildOrderStep): IconLabel | null {
+  const buildings = imagesOf(step).filter((p) => p.startsWith("building_") && !p.endsWith("/farm.webp"));
+  const path = buildings.find((p) => !DROP_OFFS.some(([name]) => name.test(p))) ?? buildings[0];
   return path ? { path, label: iconLabel(path) } : null;
 }
 

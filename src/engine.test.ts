@@ -239,7 +239,8 @@ describe("BuildEngine", () => {
     let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 4);
     expect(state.villagers).toBe(10);
     expect(state.index).toBe(1);
-    expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 3 });
+    // 3 de trop à la nourriture, mais il n'en manque que 2 au bois : « envoies-en 2 ».
+    expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 2, excess: 3 });
     expect(state.drift).toBe(1);
     // Le joueur corrige : on avance.
     state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 5000);
@@ -258,7 +259,7 @@ describe("BuildEngine", () => {
     const engine = new BuildEngine(withBuilders, "English");
     expect(feed(engine, reading({ food: 7, wood: 4 }), 0, 5).misplacement).toBeNull();
     // Au-delà des bâtisseurs prévus, l'alerte revient.
-    expect(feed(engine, reading({ food: 9, wood: 8 }), 5000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3 });
+    expect(feed(engine, reading({ food: 9, wood: 8 }), 5000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3, excess: 3 });
   });
 
   it("signale un villageois en trop sur une ressource s'il y reste", () => {
@@ -268,7 +269,7 @@ describe("BuildEngine", () => {
     let state = feed(engine, reading({ food: 7, wood: 1 }), 0, 2);
     expect(state.misplacement).toBeNull();
     state = feed(engine, reading({ food: 7, wood: 1 }), 2000, 3);
-    expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 1 });
+    expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 1, excess: 1 });
     state = feed(engine, reading({ food: 6, wood: 2 }), 5000, 1);
     expect(state.misplacement).toBeNull();
   });

@@ -14,7 +14,7 @@ import {
 import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
-import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepDropOff, stepLandmark, villagerFocus } from "./display";
+import { heroModel, iconLabel, isWellKnownIcon, stepLandmark } from "./display";
 import { AGE_NAMES, BuildEngine, effectiveVillagerTargets, type EngineState } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { ageUpBuilders } from "./top";
@@ -574,7 +574,7 @@ function playView(saved: SavedBuild): HTMLElement {
   view.append(notes(step.notes, "notes", translate, named));
   // L'étape suivante seulement si le joueur la demande : une étape à la fois, l'essentiel à l'écran.
   if (next && state.settings.showNext) {
-    view.append(h("div", "next", h("span", "muted", "Ensuite · "), ...noteParts(next.notes[0] ?? "", translate)));
+    view.append(h("div", "next", h("span", "muted", "Ensuite · "), ...noteParts(next.notes[0] ?? "", translate, named)));
   }
   return view;
 }
@@ -583,10 +583,12 @@ function playView(saved: SavedBuild): HTMLElement {
 function alertBanner(auto: EngineState | null, hud: HudReading | null): HTMLElement | null {
   const m = auto?.misplacement;
   if (m) {
-    const vils = m.count > 1 ? `${m.count} villageois` : "1 villageois";
-    const move = m.count > 1 ? "envoie-les" : "envoie-le";
-    const alert = h("div", "alert", `⚠ ${vils} de trop ${RESOURCE_PLACE[m.from]} `, resourceIcon(m.from));
-    if (m.to) alert.append(` → ${move} ${RESOURCE_PLACE[m.to]} `, resourceIcon(m.to));
+    // Le nombre exact à déplacer : « 3 de trop à la nourriture → envoies-en 2 au bois ».
+    const alert = h("div", "alert", `⚠ ${m.excess} villageois de trop ${RESOURCE_PLACE[m.from]} `, resourceIcon(m.from));
+    if (m.to) {
+      const move = m.count < m.excess ? `envoies-en ${m.count}` : m.count > 1 ? "envoie-les" : "envoie-le";
+      alert.append(` → ${move} ${RESOURCE_PLACE[m.to]} `, resourceIcon(m.to));
+    }
     return alert;
   }
   if (hud && hud.idle > 0) {
@@ -605,38 +607,22 @@ const RESOURCE_PLACE: Record<Resource, string> = {
 
 /**
  * Où envoyer le prochain villageois produit (point de ralliement) : une grande icône, sans
- * chiffre (les chiffres sont dans les barres). Le bâtiment de dépôt n'est cité que s'il
- * n'est pas déjà dans les consignes affichées : quand le villageois est celui de l'étape
- * suivante, c'est lui qui le construit.
+ * chiffre (voir `heroModel`). Les icônes nommées ici ne le sont plus dans les consignes.
  */
 function heroBlock(steps: BuildOrderStep[], hud: HudReading | null, named: Set<string>): HTMLElement | null {
-  const villagers = state.engine?.villagers ?? null;
-  const toProduce = hud && villagers !== null ? effectiveVillagerTargets(steps)[state.step] - villagers : null;
-  const focus = villagerFocus(steps, state.step, hud?.gatherers ?? null, toProduce);
-  if (!focus) return null;
-  const focusStep = steps[focus.stepIndex];
-  const text = h("div", "hero-text");
-  let tile: HTMLElement;
-  if (focus.resource === "build") {
-    // Répartition faite, villageois encore à produire : les bâtisseurs prévus par l'étape.
-    const building = stepBuilding(focusStep);
-    tile = h("div", "tile goal-tile", building ? gameIcon(building.path, "🔨") : "🔨");
-    text.append(h("div", "big", "CONSTRUCTION"));
-    if (building) {
-      text.append(h("div", "sub", building.label));
-      named.add(building.path);
-    }
-  } else {
-    const r = focus.resource;
-    const source = r === "food" ? foodSource(focusStep) : null;
-    tile = h("div", `tile ${r}`, gameIcon(source?.path ?? RESOURCE_ICONS[r][2], RESOURCE_ICONS[r][0]));
-    text.append(h("div", "big", (source?.label ?? RESOURCE_ICONS[r][1]).toUpperCase()));
-    if (focus.stepIndex === state.step) {
-      if (source) named.add(source.path);
-    } else {
-      const dropOff = stepDropOff(focusStep, r);
-      if (dropOff) text.append(h("div", "sub", "il construit un ", gameIcon(dropOff.path, ""), ` ${dropOff.label}`));
-    }
+  const hero = heroModel(steps, state.step, hud?.gatherers ?? null, state.engine?.villagers ?? null);
+  if (!hero) return null;
+  for (const path of hero.named) named.add(path);
+  const fallback = hero.resource ? RESOURCE_ICONS[hero.resource][0] : "🔨";
+  const tile = h(
+    "div",
+    hero.resource ? `tile ${hero.resource}` : "tile goal-tile",
+    hero.icon ? gameIcon(hero.icon, fallback) : fallback,
+  );
+  const text = h("div", "hero-text", h("div", "big", hero.word));
+  if (hero.detail) text.append(h("div", "sub", hero.detail));
+  if (hero.dropOff) {
+    text.append(h("div", "sub", "il construit un ", gameIcon(hero.dropOff.path, ""), ` ${hero.dropOff.label}`));
   }
   return h("div", "primary", h("div", "kicker", "PROCHAIN VILLAGEOIS"), h("div", "action", tile, text));
 }
@@ -653,6 +639,7 @@ function goalBlock(auto: EngineState, hud: HudReading, step: BuildOrderStep, nam
     sub.append(" · ", gameIcon(landmark.path, ""), ` ${landmark.label}`);
     named.add(landmark.path);
   }
+  if (!isAge) named.add(TC_ICON);
   text.append(sub);
 
   const costs = h("div", "bullets");

@@ -44,8 +44,11 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
 - **Importer un lien** : tu peux aussi coller un lien `aoe4guides.com/builds/…`, ou le
   JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
 - **Pendant la partie**, du plus important au détail : une alerte s'il y en a une
-  (répartition, villageois inactifs), la grande icône du **prochain villageois** (« BOIS ×3,
-  puis camp de bûcherons »), les barres **réel / cible** par ressource, les consignes
+  (« 3 villageois de trop à la nourriture → envoies-en 2 au bois », villageois inactifs),
+  la grande icône du **prochain villageois** produit, sans chiffre (« BOIS » ; « BOIS · il
+  construit un camp de bûcherons » s'il commence l'étape suivante ; « CONSTRUCTION » pour un
+  bâtisseur prévu), les barres **réel / cible** par ressource (les seuls chiffres, avec ceux
+  des consignes), les consignes
   **traduites en français** (BO en anglais seulement, désactivable dans ⚙) avec les icônes
   du jeu en grand, et le nom écrit à côté des icônes peu connues (baies, moulin…). Une
   étape à la fois : l'étape suivante (« Ensuite ») ne s'affiche que si tu l'actives dans ⚙.
@@ -59,8 +62,9 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
   stocks, villageois par ressource).
   - Le BO avance dès qu'un villageois de plus que la cible de l'étape apparaît et que la
     répartition de l'étape est faite (à un villageois près, plus les bâtisseurs prévus) :
-    avec 6 vils aux moutons, le 7e fait passer à l'étape qui dit où envoyer les suivants
-    (« Prochains vils → 🪵 bois (+3) »). Une partie n'est pas lisse (attaque, villageois en
+    avec 6 vils aux moutons, le 7e fait passer à l'étape qui dit où envoyer les suivants.
+    L'alerte, le passage d'étape et le prochain villageois suivent la même règle de
+    répartition (`src/distribution.ts`). Une partie n'est pas lisse (attaque, villageois en
     plus) : BoGo avance prudemment, une étape à la fois, après 5 s au moins sur chacune.
     Si la répartition n'est pas suivie, il reste sur l'étape, dit quoi corriger, et à
     partir de 3 villageois en plus propose ⌘⌥→ au lieu de sauter l'étape tout seul.

@@ -292,7 +292,6 @@ main.play {
 
 /* Grande icône du prochain villageois (piste C), teintée par ressource. */
 .tile {
-  position: relative;
   flex: none;
   display: grid;
   place-items: center;

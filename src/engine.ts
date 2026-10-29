@@ -10,6 +10,7 @@
 import type { BuildOrderStep } from "./buildOrder";
 import { civilizationId } from "./civs";
 import costs from "./data/costs.json";
+import { distributionReached, plannedMoves, type Move } from "./distribution";
 import { RESOURCES, type HudReading, type Resource, type Resources } from "./hud";
 
 export type StepGoal = { kind: "villagers" } | { kind: "age"; age: number } | { kind: "tc" };
@@ -98,11 +99,8 @@ export function nextVillagerResources(steps: BuildOrderStep[], index: number): P
   return result;
 }
 
-export interface Misplacement {
-  from: Resource;
-  to: Resource | null;
-  count: number;
-}
+/** Villageois mal placés : le premier déplacement prévu (voir `plannedMoves`). */
+export type Misplacement = Move;
 
 export interface EngineState {
   index: number;
@@ -124,7 +122,6 @@ const SPEND_RATIO = 0.75;
 /** Le TC peut coûter moins cher après certaines technologies : seuil plus bas. */
 const TC_SPEND_RATIO = 0.6;
 /** Villageois manquants tolérés sur la répartition (en chemin, lecture) en plus des bâtisseurs. */
-const DISTRIBUTION_TOLERANCE = 1;
 /**
  * Une partie n'est pas lisse (attaque, villageois en plus) : BoGo avance prudemment. Chaque
  * étape reste affichée au moins ce temps avant un passage automatique, une étape à la fois,
@@ -249,10 +246,7 @@ export class BuildEngine {
   /** Les villageois sont répartis comme l'étape le demande, à quelques villageois près. */
   private distributionReached(index: number): boolean {
     const gatherers = this.last?.gatherers;
-    if (!gatherers) return true;
-    const target = this.steps[index].resources;
-    const missing = RESOURCES.reduce((sum, r) => sum + Math.max(0, target[r] - gatherers[r]), 0);
-    return missing <= DISTRIBUTION_TOLERANCE + Math.max(0, target.builder ?? 0);
+    return !gatherers || distributionReached(this.steps[index].resources, gatherers);
   }
 
   /**
@@ -302,29 +296,18 @@ export class BuildEngine {
   private checkMisplacement(now: number): Misplacement | null {
     const reading = this.last;
     if (!reading) return null;
-    const target = this.steps[this.index].resources;
-    const over = (r: Resource) => reading.gatherers[r] - target[r];
-    const excess = RESOURCES.filter((r) => target[r] >= 0 && over(r) > 0);
-    // Les bâtisseurs prévus par le BO récoltent en attendant de construire : autant de
-    // villageois en trop ne sont pas une erreur.
-    const builders = Math.max(0, target.builder ?? 0);
-    const totalExcess = excess.reduce((sum, r) => sum + over(r), 0);
-    if (excess.length === 0 || totalExcess <= builders) {
+    // Même règle que le bloc « Prochain villageois » : le premier déplacement prévu, plafonné à
+    // ce qui manque à la destination ; les bâtisseurs prévus récoltent en attendant.
+    const move = plannedMoves(this.steps[this.index].resources, reading.gatherers)[0];
+    if (!move) {
       this.misplacedSince = null;
       return null;
     }
-    const from = excess.sort((a, b) => over(b) - over(a))[0];
-    const count = Math.min(over(from), totalExcess - builders);
-    const to =
-      RESOURCES.filter((r) => target[r] >= 0 && reading.gatherers[r] < target[r]).sort(
-        (a, b) => target[b] - reading.gatherers[b] - (target[a] - reading.gatherers[a]),
-      )[0] ?? null;
-
     // L'alerte n'apparaît que si l'écart dure (villageois en chemin, lecture ratée).
-    const key = `${from}>${to}`;
+    const key = `${move.from}>${move.to}`;
     if (this.misplacedSince?.key !== key) this.misplacedSince = { key, at: now };
     if (now - this.misplacedSince.at < MISPLACEMENT_SECONDS * 1000) return null;
-    return { from, to, count };
+    return move;
   }
 }
 
