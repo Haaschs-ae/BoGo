@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrderStep, StepResources } from "./buildOrder";
-import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepLandmark, villagerFocus } from "./display";
+import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepDropOff, stepLandmark, villagerFocus } from "./display";
 
 function step(res: Partial<StepResources>, notes: string[] = []): BuildOrderStep {
   return {
@@ -18,31 +18,43 @@ const steps = [
   step({ food: 6, wood: 3, gold: 2 }, ["Age up with @landmark_english/council-hall.webp@"]),
 ];
 
-describe("villagerFocus", () => {
+describe("villagerFocus (où va le prochain villageois produit)", () => {
   it("annonce la suite quand l'étape en cours est faite (6 aux moutons → bois)", () => {
-    expect(villagerFocus(steps, 0, { food: 6, wood: 0, gold: 0, stone: 0 })).toEqual({
-      resource: "wood",
-      count: 3,
-      others: [],
-      stepIndex: 1,
-    });
+    expect(villagerFocus(steps, 0, { food: 6, wood: 0, gold: 0, stone: 0 }, 0)).toEqual({ resource: "wood", stepIndex: 1 });
+  });
+
+  it("compte le villageois que l'alerte demande de déplacer (cas vu : 7 nourriture, 1 bois, 8/9)", () => {
+    // Cible 6 nourriture, 3 bois : le 7e à la nourriture part au bois, le prochain produit aussi.
+    expect(villagerFocus(steps, 1, { food: 7, wood: 1, gold: 0, stone: 0 }, 1)).toEqual({ resource: "wood", stepIndex: 1 });
+    // Le déplacement suffit à faire la répartition : le prochain villageois est pour l'étape d'après.
+    expect(villagerFocus(steps, 1, { food: 7, wood: 2, gold: 0, stone: 0 }, 0)).toEqual({ resource: "gold", stepIndex: 2 });
+  });
+
+  it("plus de villageois à produire pour l'étape : le prochain va à l'étape suivante", () => {
+    // Il manque 1 bois mais les 9 villageois sont là (un inactif à replacer) : le 10e va à l'or.
+    expect(villagerFocus(steps, 1, { food: 6, wood: 2, gold: 0, stone: 0 }, 0)).toEqual({ resource: "gold", stepIndex: 2 });
   });
 
   it("dit ce qui manque à l'étape en cours, le plus gros manque d'abord", () => {
-    expect(villagerFocus(steps, 2, { food: 6, wood: 2, gold: 0, stone: 0 })).toEqual({
-      resource: "gold",
-      count: 2,
-      others: [{ resource: "wood", count: 1 }],
-      stepIndex: 2,
-    });
+    expect(villagerFocus(steps, 2, { food: 6, wood: 2, gold: 0, stone: 0 }, 3)).toEqual({ resource: "gold", stepIndex: 2 });
+  });
+
+  it("ne déplace pas les bâtisseurs prévus, qui récoltent en attendant", () => {
+    const withBuilders = [step({ food: 6, wood: 3, builder: 2 }), step({ food: 6, wood: 3, gold: 3 })];
+    expect(villagerFocus(withBuilders, 0, { food: 8, wood: 1, gold: 0, stone: 0 }, 2)).toEqual({ resource: "wood", stepIndex: 0 });
+  });
+
+  it("répartition faite mais villageois encore à produire : ce sont les bâtisseurs prévus", () => {
+    const withBuilders = [step({ food: 6, wood: 3, builder: 2 }, ["2 @unit_worker/villager.webp@ build @building_military/barracks.webp@"])];
+    expect(villagerFocus(withBuilders, 0, { food: 6, wood: 3, gold: 0, stone: 0 }, 2)).toEqual({ resource: "build", stepIndex: 0 });
   });
 
   it("sans panneau lu, donne ce que l'étape ajoute à la précédente", () => {
-    expect(villagerFocus(steps, 1, null)).toMatchObject({ resource: "wood", count: 3, stepIndex: 1 });
+    expect(villagerFocus(steps, 1, null)).toEqual({ resource: "wood", stepIndex: 1 });
   });
 
   it("ne propose rien quand tout est fait jusqu'à la dernière étape", () => {
-    expect(villagerFocus(steps, 2, { food: 6, wood: 3, gold: 2, stone: 0 })).toBeNull();
+    expect(villagerFocus(steps, 2, { food: 6, wood: 3, gold: 2, stone: 0 }, 0)).toBeNull();
   });
 });
 
@@ -52,6 +64,13 @@ describe("icônes et libellés de l'étape", () => {
     expect(stepBuilding(steps[1])).toEqual({ path: "building_economy/lumber-camp.webp", label: "camp de bûcherons" });
     expect(stepLandmark(steps[2])).toEqual({ path: "landmark_english/council-hall.webp", label: "Council Hall" });
     expect(foodSource(steps[1])).toBeNull();
+  });
+
+  it("trouve le bâtiment de dépôt de la ressource (qui le construit : le premier villageois envoyé)", () => {
+    expect(stepDropOff(steps[1], "wood")).toEqual({ path: "building_economy/lumber-camp.webp", label: "camp de bûcherons" });
+    expect(stepDropOff(steps[1], "gold")).toBeNull();
+    const berries = step({ food: 9 }, ["3 -> @resource/berrybush.webp@, build a @building_economy/mill.webp@"]);
+    expect(stepDropOff(berries, "food")?.label).toBe("moulin");
   });
 });
 

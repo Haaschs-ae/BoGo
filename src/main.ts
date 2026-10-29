@@ -14,7 +14,7 @@ import {
 import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
-import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepLandmark, villagerFocus } from "./display";
+import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepDropOff, stepLandmark, villagerFocus } from "./display";
 import { AGE_NAMES, BuildEngine, effectiveVillagerTargets, type EngineState } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { ageUpBuilders } from "./top";
@@ -556,11 +556,13 @@ function playView(saved: SavedBuild): HTMLElement {
   const view = h("main", "play");
   const alert = alertBanner(auto, hud);
   if (alert) view.append(alert);
+  // Icônes déjà nommées en grand au-dessus : pas de nom répété dans les consignes.
+  const named = new Set<string>();
 
   if (auto && auto.goal.kind !== "villagers") {
-    view.append(goalBlock(auto, hud!, step));
+    view.append(goalBlock(auto, hud!, step, named));
   } else {
-    const hero = heroBlock(steps, hud);
+    const hero = heroBlock(steps, hud, named);
     if (hero) view.append(hero);
     view.append(bulletList(step, effectiveVillagerTargets(steps)[state.step], hud));
     // Villageois en plus sans la répartition de l'étape (attaque, choix du joueur) : BoGo ne
@@ -569,7 +571,7 @@ function playView(saved: SavedBuild): HTMLElement {
       view.append(h("div", "drift", `+${auto.drift} villageois sans suivre cette étape : ⌘⌥→ pour passer à la suite`));
     }
   }
-  view.append(notes(step.notes, "notes", translate));
+  view.append(notes(step.notes, "notes", translate, named));
   // L'étape suivante seulement si le joueur la demande : une étape à la fois, l'essentiel à l'écran.
   if (next && state.settings.showNext) {
     view.append(h("div", "next", h("span", "muted", "Ensuite · "), ...noteParts(next.notes[0] ?? "", translate)));
@@ -601,36 +603,56 @@ const RESOURCE_PLACE: Record<Resource, string> = {
   stone: "à la pierre",
 };
 
-/** Grande icône du prochain villageois : où l'envoyer, combien, et le bâtiment à poser. */
-function heroBlock(steps: BuildOrderStep[], hud: HudReading | null): HTMLElement | null {
-  const focus = villagerFocus(steps, state.step, hud?.gatherers ?? null);
+/**
+ * Où envoyer le prochain villageois produit (point de ralliement) : une grande icône, sans
+ * chiffre (les chiffres sont dans les barres). Le bâtiment de dépôt n'est cité que s'il
+ * n'est pas déjà dans les consignes affichées : quand le villageois est celui de l'étape
+ * suivante, c'est lui qui le construit.
+ */
+function heroBlock(steps: BuildOrderStep[], hud: HudReading | null, named: Set<string>): HTMLElement | null {
+  const villagers = state.engine?.villagers ?? null;
+  const toProduce = hud && villagers !== null ? effectiveVillagerTargets(steps)[state.step] - villagers : null;
+  const focus = villagerFocus(steps, state.step, hud?.gatherers ?? null, toProduce);
   if (!focus) return null;
   const focusStep = steps[focus.stepIndex];
-  const source = focus.resource === "food" ? foodSource(focusStep) : null;
-  const path = source?.path ?? RESOURCE_ICONS[focus.resource][2];
-  const word = (source?.label ?? RESOURCE_ICONS[focus.resource][1]).toUpperCase();
-
-  const tile = h("div", `tile ${focus.resource}`, gameIcon(path, RESOURCE_ICONS[focus.resource][0]));
-  tile.append(h("span", "badge", `×${focus.count}`));
-  const text = h("div", "hero-text", h("div", "big", word));
-  const building = stepBuilding(focusStep);
-  const extra: (Node | string)[] = [];
-  if (building) extra.push("puis ", gameIcon(building.path, ""), ` ${building.label}`);
-  for (const other of focus.others) extra.push(extra.length ? " · " : "", `+${other.count} `, resourceIcon(other.resource));
-  if (extra.length) text.append(h("div", "sub", ...extra));
-  const kicker = focus.count > 1 ? "PROCHAINS VILLAGEOIS" : "PROCHAIN VILLAGEOIS";
-  return h("div", "primary", h("div", "kicker", kicker), h("div", "action", tile, text));
+  const text = h("div", "hero-text");
+  let tile: HTMLElement;
+  if (focus.resource === "build") {
+    // Répartition faite, villageois encore à produire : les bâtisseurs prévus par l'étape.
+    const building = stepBuilding(focusStep);
+    tile = h("div", "tile goal-tile", building ? gameIcon(building.path, "🔨") : "🔨");
+    text.append(h("div", "big", "CONSTRUCTION"));
+    if (building) {
+      text.append(h("div", "sub", building.label));
+      named.add(building.path);
+    }
+  } else {
+    const r = focus.resource;
+    const source = r === "food" ? foodSource(focusStep) : null;
+    tile = h("div", `tile ${r}`, gameIcon(source?.path ?? RESOURCE_ICONS[r][2], RESOURCE_ICONS[r][0]));
+    text.append(h("div", "big", (source?.label ?? RESOURCE_ICONS[r][1]).toUpperCase()));
+    if (focus.stepIndex === state.step) {
+      if (source) named.add(source.path);
+    } else {
+      const dropOff = stepDropOff(focusStep, r);
+      if (dropOff) text.append(h("div", "sub", "il construit un ", gameIcon(dropOff.path, ""), ` ${dropOff.label}`));
+    }
+  }
+  return h("div", "primary", h("div", "kicker", "PROCHAIN VILLAGEOIS"), h("div", "action", tile, text));
 }
 
 /** Passage d'âge ou TC à poser : vert et « clique ! » dès qu'on a de quoi payer. */
-function goalBlock(auto: EngineState, hud: HudReading, step: BuildOrderStep): HTMLElement {
+function goalBlock(auto: EngineState, hud: HudReading, step: BuildOrderStep, named: Set<string>): HTMLElement {
   const isAge = auto.goal.kind === "age";
   const age = auto.goal.kind === "age" ? auto.goal.age : 0;
   const tile = h("div", "tile goal-tile", gameIcon(isAge ? `age/age_${age}.webp` : TC_ICON, isAge ? "⬆" : "🏰"));
   const text = h("div", "hero-text", h("div", "big", isAge ? `ÂGE ${ROMAN[age] ?? age}` : "NOUVEAU TC"));
   const landmark = isAge ? stepLandmark(step) : null;
   const sub = h("div", "sub", isAge ? (AGE_NAMES[age] ?? "").replace(/^[IV]+ · /, "") : "Town Center");
-  if (landmark) sub.append(" · ", gameIcon(landmark.path, ""), ` ${landmark.label}`);
+  if (landmark) {
+    sub.append(" · ", gameIcon(landmark.path, ""), ` ${landmark.label}`);
+    named.add(landmark.path);
+  }
   text.append(sub);
 
   const costs = h("div", "bullets");
@@ -752,18 +774,18 @@ function gameIcon(path: string, fallback: string): HTMLElement {
   return img;
 }
 
-function notes(lines: string[], className: string, translate: boolean): HTMLElement {
+function notes(lines: string[], className: string, translate: boolean, named = new Set<string>()): HTMLElement {
   const list = h("ul", className);
-  for (const line of lines) list.append(h("li", "", ...noteParts(line, translate)));
+  for (const line of lines) list.append(h("li", "", ...noteParts(line, translate, named)));
   return list;
 }
 
 /**
  * Consigne du BO : texte (traduit si besoin, « -> » en vraie flèche) et icônes du jeu. Une
  * icône peu connue (baies, bâtiment, unité d'une nouvelle civ) est suivie de son nom, sauf
- * si le texte juste à côté le dit déjà.
+ * si le texte juste à côté le dit déjà, ou si elle est déjà nommée en grand (`named`).
  */
-function noteParts(line: string, translate: boolean): (Node | string)[] {
+function noteParts(line: string, translate: boolean, named = new Set<string>()): (Node | string)[] {
   const parts = tokenizeNote(line).map((part) => {
     if (part.kind === "image") return part;
     const text = part.text.replace(/->/g, "→");
@@ -775,9 +797,12 @@ function noteParts(line: string, translate: boolean): (Node | string)[] {
     const before = parts[i - 1];
     const after = parts[i + 1];
     const near = `${typeof before === "string" ? before.slice(-25) : ""} ${typeof after === "string" ? after.slice(0, 25) : ""}`;
-    const named =
-      state.settings.iconNames && !isWellKnownIcon(part.path) && !near.toLowerCase().includes(label.toLowerCase());
-    return icon(part.path, label, named);
+    const showName =
+      state.settings.iconNames &&
+      !isWellKnownIcon(part.path) &&
+      !named.has(part.path) &&
+      !near.toLowerCase().includes(label.toLowerCase());
+    return icon(part.path, label, showName);
   });
 }
 

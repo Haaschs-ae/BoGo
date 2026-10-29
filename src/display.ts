@@ -5,36 +5,70 @@ import { RESOURCES, type Resource, type Resources } from "./hud";
 import { translateTerm } from "./translate";
 
 export interface VillagerFocus {
-  resource: Resource;
-  count: number;
-  /** Autres ressources qui attendent aussi des villageois. */
-  others: { resource: Resource; count: number }[];
+  /** Ressource du prochain villageois, ou « build » : il part construire (bâtisseur prévu). */
+  resource: Resource | "build";
   /** Étape d'où vient la consigne (l'étape en cours, ou la suivante si elle est faite). */
   stepIndex: number;
 }
 
 /**
- * Où envoyer les prochains villageois. Avec le panneau : ce qui manque à l'étape en cours,
- * ou, si sa répartition est faite, ce qu'il faudra pour la suivante. Sans le panneau : ce
- * que l'étape ajoute par rapport à la précédente.
+ * Où envoyer le PROCHAIN villageois produit (le point de ralliement du TC).
+ *
+ * Avec le panneau, on suppose faits les déplacements que l'alerte demande (les villageois en
+ * trop vont là où il en manque) : ce qui manque encore à l'étape revient aux villageois à
+ * produire pour elle. S'il n'en reste plus à produire (`toProduce` ≤ 0), ou si la répartition
+ * est faite, le prochain villageois est pour l'étape suivante. Sans le panneau : ce que
+ * l'étape ajoute à la précédente.
  */
-export function villagerFocus(steps: BuildOrderStep[], index: number, gatherers: Resources | null): VillagerFocus | null {
-  let stepIndex = index;
-  let list = gatherers
-    ? missing(steps[index].resources, gatherers)
-    : missing(steps[index].resources, previousResources(steps, index));
-  if (gatherers && list.length === 0 && index + 1 < steps.length) {
-    stepIndex = index + 1;
-    list = missing(steps[stepIndex].resources, gatherers);
+export function villagerFocus(
+  steps: BuildOrderStep[],
+  index: number,
+  gatherers: Resources | null,
+  toProduce: number | null = null,
+): VillagerFocus | null {
+  const target = steps[index].resources;
+  if (!gatherers) {
+    const added = missing(target, previousResources(steps, index));
+    return added.length ? { resource: added[0], stepIndex: index } : null;
   }
-  if (list.length === 0) return null;
-  return { ...list[0], others: list.slice(1), stepIndex };
+  const fixed = afterMoves(target, gatherers);
+  const producing = toProduce === null || toProduce > 0;
+  const now = missing(target, fixed);
+  if (producing && now.length) return { resource: now[0], stepIndex: index };
+  // Répartition faite mais villageois encore à produire : ce sont les bâtisseurs prévus.
+  if (producing && (target.builder ?? 0) > 0) return { resource: "build", stepIndex: index };
+  const next = steps[index + 1];
+  if (!next) return null;
+  // Le joueur aura corrigé la répartition : on part de la cible de l'étape en cours.
+  const base = { ...fixed };
+  for (const r of RESOURCES) base[r] = Math.max(base[r], target[r]);
+  const later = missing(next.resources, base);
+  return later.length ? { resource: later[0], stepIndex: index + 1 } : null;
 }
 
-function missing(target: StepResources, have: Resources): { resource: Resource; count: number }[] {
-  return RESOURCES.filter((r) => target[r] >= 0 && target[r] > have[r])
-    .map((r) => ({ resource: r, count: target[r] - have[r] }))
-    .sort((a, b) => b.count - a.count);
+/**
+ * Répartition une fois corrigée : les villageois en trop (au-delà des bâtisseurs prévus, qui
+ * récoltent en attendant) vont aux ressources où il en manque le plus. Même règle que l'alerte.
+ */
+function afterMoves(target: StepResources, have: Resources): Resources {
+  const out = { ...have };
+  const counted = RESOURCES.filter((r) => target[r] >= 0);
+  const excess = counted.reduce((sum, r) => sum + Math.max(0, have[r] - target[r]), 0);
+  let movable = Math.max(0, excess - Math.max(0, target.builder ?? 0));
+  const short = counted.filter((r) => have[r] < target[r]).sort((a, b) => target[b] - have[b] - (target[a] - have[a]));
+  for (const r of short) {
+    const take = Math.min(movable, target[r] - out[r]);
+    out[r] += take;
+    movable -= take;
+  }
+  return out;
+}
+
+/** Ressources où il manque des villageois, la plus en manque d'abord. */
+function missing(target: StepResources, have: Resources): Resource[] {
+  return RESOURCES.filter((r) => target[r] >= 0 && target[r] > have[r]).sort(
+    (a, b) => target[b] - have[b] - (target[a] - have[a]),
+  );
 }
 
 function previousResources(steps: BuildOrderStep[], index: number): Resources {
@@ -70,6 +104,20 @@ export function foodSource(step: BuildOrderStep): IconLabel | null {
 /** Premier bâtiment cité par l'étape (camp de bûcherons, maison…), en français. */
 export function stepBuilding(step: BuildOrderStep): IconLabel | null {
   const path = imagesOf(step).find((p) => p.startsWith("building_") && !p.endsWith("/farm.webp"));
+  return path ? { path, label: iconLabel(path) } : null;
+}
+
+const DROP_OFFS: [RegExp, Resource[]][] = [
+  [/lumber/, ["wood"]],
+  [/mining|mine/, ["gold", "stone"]],
+  [/mill/, ["food"]],
+];
+
+/** Bâtiment de dépôt de l'étape pour cette ressource (camp de bûcherons pour le bois…). */
+export function stepDropOff(step: BuildOrderStep, resource: Resource): IconLabel | null {
+  const path = imagesOf(step).find(
+    (p) => p.startsWith("building_") && DROP_OFFS.some(([name, res]) => name.test(p) && res.includes(resource)),
+  );
   return path ? { path, label: iconLabel(path) } : null;
 }
 

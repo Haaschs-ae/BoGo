@@ -328,19 +328,6 @@ main.play {
   background: rgba(163, 172, 184, 0.2);
 }
 
-.tile .badge {
-  position: absolute;
-  top: -9px;
-  right: -12px;
-  padding: 1px 9px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #1b1b1b;
-  font-size: 18px;
-  font-weight: 800;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-
 .hero-text {
   min-width: 0;
 }
