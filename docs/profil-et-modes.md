@@ -10,9 +10,10 @@ trois propositions confrontées (joueur, fair-play, implémentation).
 
 ## Les deux modes
 
-> Contre l'IA, BoGo te coache. Contre un joueur, BoGo n'est qu'un BO papier qui tourne ses pages
-> tout seul. Test pour toute nouvelle fonction : une feuille de BO imprimée pourrait-elle le dire ?
-> Sinon, c'est pour l'entraînement contre l'IA.
+> Contre l'IA, BoGo te coache. Contre un joueur, BoGo montre ton BO, tourne ses pages tout seul et
+> affiche tes comptes en direct (ce que le jeu affiche déjà), mais aucune consigne qui décide à ta
+> place (« envoie-les au bois », « clique ! », alertes) : ça, c'est pour l'entraînement contre l'IA.
+> Les comptes en VS sont un choix du joueur (29/10) : sans eux, le suivi était trop pénible.
 
 Repères : la politique de Riot (TFT) admet une recommandation statique préparée avant la partie,
 même affichée toute la partie, mais pas une recommandation qui s'ajuste en direct à tes actions ;
@@ -55,8 +56,8 @@ jour.
 | Étape x/y, âge, horloge du jeu | oui | oui |
 | Pages qui tournent toutes seules | nombre de villageois écrit, âge ou TC payé, landmark, horloge | pareil, en attendant la répartition de l'étape |
 | Prochain villageois | ce que l'étape ajoute, tel qu'écrit | calculé sur ta répartition, avec « il construit un … » |
-| Villageois et ressources | cibles écrites (« 12 visés ») | réel / cible, ✓, +N |
-| Passage d'âge, nouveau TC | coût écrit, « Garde les ressources pour ça » | en plus : stock lu, « C'est le moment : clique ! » |
+| Villageois et ressources | réel / cible, ✓, +N | réel / cible, ✓, +N |
+| Passage d'âge, nouveau TC | coût et stock lu, « Garde les ressources pour ça » | en plus : « C'est le moment : clique ! » |
 | Alertes de répartition et d'inactifs | non | oui |
 | « +N villageois sans suivre cette étape » | non | oui |
 | Écran de choix, matchups, lancement auto en 8 s | oui | oui |

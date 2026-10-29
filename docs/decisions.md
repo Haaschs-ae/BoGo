@@ -42,8 +42,9 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   par le joueur : elle annulerait la protection voulue vis-à-vis de World's Edge. On garde VS / IA.
 - **2026-10-29 · Deux modes : VS (contre des joueurs, par défaut) et IA (entraînement contre
   l'IA).** Remplace « Classé sobre / Entraînement en personnalisée » : une personnalisée contre un
-  joueur est en VS. VS = BO papier qui tourne ses pages (ni alertes, ni comptes en direct, ni
-  « clique ! », prochain villageois tel qu'écrit, pages au nombre de villageois écrit). IA
+  joueur est en VS. VS = BO qui tourne ses pages au nombre de villageois écrit, avec les comptes
+  en direct (ajoutés le 29/10 à la demande du joueur : sans eux, trop pénible), mais ni alertes,
+  ni « clique ! », ni prochain villageois recalculé. IA
   seulement sur choix explicite, dès 0:00 (choix du joueur : la première minute compte à
   l'entraînement), pour une partie ; VS forcé dès qu'AoE4World voit une classée, une rapide ou un
   joueur en face.

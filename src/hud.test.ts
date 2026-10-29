@@ -35,6 +35,33 @@ describe("parseHud", () => {
     });
   });
 
+  it("ne prend pas pour la population une autre fraction affichée au-dessus (vu en partie, 2026)", () => {
+    // Capture du joueur : « 0 » (bouton), « 12/20 » et « 0/7 » au-dessus de « 13/35 ».
+    const newHud = [
+      token("0", 62, 750, 80, 768),
+      token("12/20", 42, 800, 86, 820),
+      token("0/7", 152, 800, 180, 820),
+      token("13/35", 42, 858, 86, 878),
+      token("0", 146, 858, 157, 878),
+      token("99", 42, 916, 62, 936),
+      token("2", 146, 916, 157, 936),
+      token("30", 42, 955, 62, 975),
+      token("3", 146, 955, 157, 975),
+      token("40", 42, 994, 62, 1014),
+      token("3", 146, 994, 157, 1014),
+      token("0", 42, 1033, 52, 1053),
+      token("0", 146, 1033, 157, 1053),
+    ];
+    expect(parseHud(newHud)).toEqual({
+      population: 13,
+      populationMax: 35,
+      idle: 0,
+      stock: { food: 99, wood: 30, gold: 40, stone: 0 },
+      gatherers: { food: 2, wood: 3, gold: 3, stone: 0 },
+      villagers: 8,
+    });
+  });
+
   it("compte 0 pour les compteurs grisés que la reconnaissance n'a pas lus", () => {
     const grayZerosMissing = startOfGame.filter((t, i) => !(t.text === "0" && t.x > 0.4) || i === 0);
     const reading = parseHud(grayZerosMissing);

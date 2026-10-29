@@ -1,7 +1,7 @@
 // Deux modes de jeu. Entraînement (contre l'IA) : BoGo te coache. Versus (contre des joueurs,
-// en classé, en rapide ou en personnalisée) : BoGo n'est qu'un BO papier qui tourne ses pages
-// tout seul. Test : une feuille de BO imprimée pourrait-elle le dire ? Sinon, c'est pour
-// l'entraînement. AoE4World prouve la présence d'humains, jamais celle de l'IA : quand BoGo ne
+// en classé, en rapide ou en personnalisée) : ton BO, qui tourne ses pages tout seul, et tes
+// comptes en direct (ce que le jeu affiche déjà) ; jamais de consigne qui décide à ta place
+// (« envoie-les au bois », « clique ! », alertes) : ça, c'est pour l'entraînement. AoE4World prouve la présence d'humains, jamais celle de l'IA : quand BoGo ne
 // sait pas, c'est Versus. Voir docs/profil-et-modes.md.
 
 import { opposition, type DetectedGame } from "./aoe4world";
@@ -28,7 +28,8 @@ export interface ModeFeatures {
 
 export const FEATURES: Record<PlayMode, Readonly<ModeFeatures>> = {
   training: { liveCounts: true, alerts: true, drift: true, liveHero: true, affordable: true, coaching: true },
-  versus: { liveCounts: false, alerts: false, drift: false, liveHero: false, affordable: false, coaching: false },
+  // Comptes en direct en VS aussi (choix du joueur, 29/10) : le jeu les affiche déjà.
+  versus: { liveCounts: true, alerts: false, drift: false, liveHero: false, affordable: false, coaching: false },
 };
 
 /** Pourquoi ce mode : choix par défaut, humains vus, IA choisi (en attente de la partie, ou actif). */
@@ -184,23 +185,29 @@ export function freshGame(game: DetectedGame | null, clockSeconds: number | null
 }
 
 /**
- * Ce que la vue a le droit de lire de la partie en cours. En Versus : aucune lecture du
- * panneau, et un état du moteur sans conseil (répartition, dérive, « payable », villageois).
+ * Ce que la vue a le droit de lire de la partie en cours : les comptes si le mode les montre,
+ * et un état du moteur sans les conseils que le mode ne montre pas (répartition, dérive,
+ * « payable »).
  */
 export function projectLive(
   features: Readonly<ModeFeatures>,
   hud: HudReading | null,
   engine: EngineState | null,
 ): { hud: HudReading | null; engine: EngineState | null } {
-  if (features.liveCounts) return { hud, engine };
   return {
-    hud: null,
-    engine: engine && { ...engine, misplacement: null, drift: 0, affordable: false, villagers: null },
+    hud: features.liveCounts ? hud : null,
+    engine: engine && {
+      ...engine,
+      misplacement: features.alerts ? engine.misplacement : null,
+      drift: features.drift ? engine.drift : 0,
+      affordable: features.affordable ? engine.affordable : false,
+      villagers: features.liveCounts ? engine.villagers : null,
+    },
   };
 }
 
 export const MODE_LABELS: Record<PlayMode | "waiting", { badge: string; title: string }> = {
-  versus: { badge: "VS", title: "Versus : ton BO seulement, sans conseil calculé en direct" },
+  versus: { badge: "VS", title: "Versus : ton BO et tes comptes en direct, sans consigne qui décide à ta place" },
   waiting: {
     badge: "IA…",
     title: "Entraînement choisi : le coaching démarre dès que BoGo lit l'horloge de la partie",

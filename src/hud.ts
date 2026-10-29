@@ -40,13 +40,23 @@ interface NumberToken {
 const POPULATION = /^(\d+)\/(\d+)$/;
 
 export function parseHud(tokens: OcrToken[]): HudReading | null {
-  const pop = tokens.find((t) => POPULATION.test(clean(t.text)));
-  if (!pop) return null;
+  // Plusieurs fractions peuvent s'afficher au-dessus du panneau (« 12/20 », « 0/7 ») : la
+  // population est la plus basse qui a ses quatre lignes de ressources en dessous.
+  const candidates = tokens.filter((t) => POPULATION.test(clean(t.text))).sort((a, b) => b.y - a.y);
+  for (const pop of candidates) {
+    const reading = readFrom(pop, tokens);
+    if (reading) return reading;
+  }
+  return null;
+}
+
+function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   const [, current, max] = POPULATION.exec(clean(pop.text))!;
   const popCy = pop.y + pop.h / 2;
   const rowTolerance = pop.h * 0.6;
 
-  const numbers = tokens.filter((t) => t !== pop).flatMap(numbersOf);
+  // Les autres fractions (au-dessus) ne sont pas des nombres du panneau.
+  const numbers = tokens.filter((t) => t !== pop && !POPULATION.test(clean(t.text))).flatMap(numbersOf);
   const idleToken = numbers
     .filter((n) => Math.abs(n.cy - popCy) <= rowTolerance && n.cx > pop.x + pop.w)
     .sort((a, b) => a.cx - b.cx)[0];

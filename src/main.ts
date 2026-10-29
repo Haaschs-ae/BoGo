@@ -1092,7 +1092,7 @@ function modePill(): HTMLElement {
   }
   const armed = modeMemory.armed;
   const title = !armed
-    ? "VS : contre des joueurs, ton BO seulement, sans conseil calculé en direct. Clique avant une partie contre l'IA pour l'entraînement."
+    ? "VS : contre des joueurs, ton BO et tes comptes en direct, sans consigne qui décide à ta place. Clique avant une partie contre l'IA pour l'entraînement."
     : m === "training"
       ? `${MODE_LABELS.training.title}. Revient à VS à la fin de la partie. Clique pour revenir à VS.`
       : "Entraînement contre l'IA pour ta prochaine partie, dès 0:00. Si AoE4World voit une classée, une partie rapide ou un joueur en face, BoGo repasse en VS. Clique pour revenir à VS.";
@@ -1149,7 +1149,7 @@ function playView(saved: SavedBuild): HTMLElement {
   const hud = hudIsFresh() ? state.hud!.reading : null;
   const auto = hud && state.engine?.index === state.step ? state.engine : null;
   const translate = shouldTranslate(saved);
-  // Versus : rien de calculé sur la partie en cours, seulement le BO tel qu'il est écrit.
+  // Ce que le mode montre (voir FEATURES) : en VS, les comptes mais aucune consigne qui décide à ta place.
   const f = features();
   const live = projectLive(f, hud, auto);
 
@@ -1361,7 +1361,8 @@ function miniView(): HTMLElement {
   const gameTime = clock.current(Date.now());
   if (gameTime !== null) pill.append(h("span", "clock", `⏱ ${formatClock(gameTime)}`));
   if (mode() === "training") pill.append(h("span", "mode-badge training", MODE_LABELS.training.badge));
-  const hud = projectLive(features(), hudIsFresh() ? state.hud!.reading : null, null).hud;
+  // Inactifs : une alerte, seulement en IA.
+  const hud = features().alerts ? projectLive(features(), hudIsFresh() ? state.hud!.reading : null, null).hud : null;
   if (hud && hud.idle > 0) pill.append(h("span", "warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} inactif${hud.idle > 1 ? "s" : ""}`));
   pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()));
   for (const child of pill.querySelectorAll("span")) child.dataset.tauriDragRegion = "";
@@ -1470,7 +1471,7 @@ function newsCard(): HTMLElement | "" {
     h(
       "p",
       "",
-      "Contre des joueurs (VS, par défaut), BoGo n'affiche plus que ton BO, sans alertes ni comptes en direct. " +
+      "Contre des joueurs (VS, par défaut), BoGo montre ton BO et tes comptes en direct, sans alertes ni « clique ! ». " +
         "Pour t'entraîner avec tout le coaching, clique VS → IA en haut avant une partie contre l'IA.",
     ),
     ok,
@@ -2045,10 +2046,11 @@ function settingsView(): HTMLElement {
     h(
       "p",
       "hint",
-      "Deux modes. VS, par défaut, contre des joueurs : ton BO et ses pages qui tournent toutes seules, rien de " +
-        "calculé sur ta partie. IA, à choisir avant une partie contre l'IA (bouton VS / IA en haut) : en plus, alertes " +
-        "de répartition et d'inactifs, comptes réel / cible, stock du passage d'âge, dès 0:00. Si AoE4World voit une " +
-        "classée, une partie rapide ou un joueur en face, retour en VS : ne choisis IA qu'avant une partie contre l'IA.",
+      "Deux modes. VS, par défaut, contre des joueurs : ton BO, ses pages qui tournent toutes seules et tes comptes " +
+        "en direct (réel / cible), sans consigne qui décide à ta place. IA, à choisir avant une partie contre l'IA " +
+        "(bouton VS / IA en haut) : en plus, alertes de répartition et d'inactifs, prochain villageois selon ta " +
+        "répartition et « clique ! », dès 0:00. Si AoE4World voit une classée, une partie rapide ou un joueur en face, " +
+        "retour en VS : ne choisis IA qu'avant une partie contre l'IA.",
     ),
     h("label", "scale", "Taille de BoGo ", scaleValue, scale),
     hotkeySettings(),

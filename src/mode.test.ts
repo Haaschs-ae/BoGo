@@ -86,18 +86,21 @@ describe("ce que la vue peut lire de la partie", () => {
     completed: false,
   } as EngineState;
 
-  it("en Versus : ni panneau, ni conseil ; l'étape reste", () => {
+  it("en Versus : les comptes, sans conseil ; l'étape reste", () => {
     const live = projectLive(FEATURES.versus, hud, engine);
-    expect(live.hud).toBeNull();
-    expect(live.engine).toMatchObject({ index: 1, misplacement: null, drift: 0, affordable: false, villagers: null });
+    // Comptes en direct (ce que le jeu affiche), sans conseil qui décide à ta place.
+    expect(live.hud).toBe(hud);
+    expect(live.engine).toMatchObject({ index: 1, misplacement: null, drift: 0, affordable: false, villagers: 10 });
   });
 
   it("en Entraînement : tout", () => {
     expect(projectLive(FEATURES.training, hud, engine)).toEqual({ hud, engine });
   });
 
-  it("le Versus coupe tout ce qui est calculé en direct", () => {
-    expect(Object.values(FEATURES.versus).every((on) => on === false)).toBe(true);
+  it("le Versus coupe tout conseil qui décide à ta place", () => {
+    const { liveCounts, ...advice } = FEATURES.versus;
+    expect(liveCounts).toBe(true);
+    expect(Object.values(advice).every((on) => on === false)).toBe(true);
     expect(Object.values(FEATURES.training).every((on) => on === true)).toBe(true);
   });
 });

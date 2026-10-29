@@ -75,9 +75,9 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
 - **Importer un lien** : tu peux aussi coller un lien `aoe4guides.com/builds/…`, ou le
   JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
 - **Deux modes**, toujours affichés en haut (VS / IA) :
-  - **VS**, par défaut, contre des joueurs (classée, rapide, personnalisée) : BoGo n'est qu'un
-    BO papier qui tourne ses pages tout seul. Consignes, cibles écrites, prochain villageois tel
-    qu'écrit ; ni alertes, ni comptes lus en direct, ni « clique ! ».
+  - **VS**, par défaut, contre des joueurs (classée, rapide, personnalisée) : ton BO, qui tourne
+    ses pages tout seul, et tes comptes en direct face aux cibles (ce que le jeu affiche déjà) ;
+    prochain villageois tel qu'écrit ; ni alertes, ni « envoie-les au bois », ni « clique ! ».
   - **IA**, entraînement contre l'IA : clique VS → IA dans l'en-tête avant la partie. BoGo te
     coache dès 0:00 (tout ce qui suit). Le choix vaut pour une partie ; si AoE4World voit une
     classée, une partie rapide ou un joueur en face, retour en VS aussitôt.
@@ -265,15 +265,16 @@ qui sont des règles du projet :
 
 ### Deux modes : VS (contre des joueurs) et IA (entraînement contre l'IA)
 
-Contre l'IA, BoGo te coache. Contre un joueur, BoGo n'est qu'un BO papier qui tourne ses pages
-tout seul : il montre ton plan préparé avant la partie et ne commente jamais ta partie en cours.
+Contre l'IA, BoGo te coache. Contre un joueur, BoGo montre ton plan préparé avant la partie et tes
+comptes en direct (ce que le jeu affiche déjà), mais ne te dit jamais quoi faire en cours de partie.
 
 | | VS | IA |
 |---|---|---|
 | BO écrit, pages qui tournent toutes seules | oui | oui |
 | Écran de choix, matchups, civ adverse en 1v1 | oui | oui |
 | Prochain villageois | tel qu'écrit dans l'étape | calculé sur ta partie |
-| Comptes réel / cible, stock du passage d'âge, « clique ! » | non | oui |
+| Comptes réel / cible, stock du passage d'âge | oui | oui |
+| « C'est le moment : clique ! », « envoie-les au bois » | non | oui |
 | Alertes de répartition et d'inactifs | non | oui |
 
 BoGo passe en VS dès qu'il ne sait pas contre qui tu joues : AoE4World prouve la présence de
