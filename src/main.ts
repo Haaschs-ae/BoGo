@@ -43,6 +43,8 @@ import {
   type HotkeyAction,
 } from "./platform";
 import { looksEnglish, translateText } from "./translate";
+import { adviseBuild, categoryPicks, COUNTDOWN_SECONDS, distributionMismatch, type Advice } from "./advice";
+import { newEntry, parseJournal, serializeJournal, type GameEntry, type LaunchHow } from "./journal";
 import {
   addBuild,
   filterBuilds,
@@ -103,8 +105,8 @@ const VISION_STATUS: Record<string, string> = {
 };
 
 interface State {
-  /** civs : grille des drapeaux ; civ : BO de la civ choisie. */
-  view: "civs" | "civ" | "play" | "settings";
+  /** civs : grille des drapeaux ; civ : BO de la civ choisie ; choice : choix du début de partie. */
+  view: "civs" | "civ" | "play" | "settings" | "choice";
   library: SavedBuild[];
   civ: string;
   style: Style | "";
@@ -129,6 +131,21 @@ interface State {
   finished: boolean;
   /** Fichier où la partie est enregistrée (réglage « Enregistrer mes parties »), ou l'erreur. */
   recording: { path: string | null; error: string | null };
+  /** Choix du début de partie : de la détection au premier passage d'âge (ou 5 min). */
+  offer: Offer | null;
+}
+
+interface Offer {
+  game: DetectedGame;
+  advice: Advice | null;
+  /** Meilleur BO de chaque catégorie (raccourcis 1 à 4). */
+  picks: Record<Style, SavedBuild | null>;
+  /** Fin du compte à rebours (ms), ou null s'il ne tourne pas. */
+  countdownEnd: number | null;
+  /** Pourquoi le BO proposé ne sera pas lancé tout seul. */
+  autoOff: string | null;
+  /** Fin des raccourcis de choix (ms) ; le premier passage d'âge l'avance. */
+  until: number;
 }
 
 const state: State = {
@@ -151,6 +168,7 @@ const state: State = {
   mini: false,
   finished: false,
   recording: { path: null, error: null },
+  offer: null,
 };
 const clock = new ClockTracker();
 /** Moteur du BO en cours, recréé à chaque lancement d'un BO. */
@@ -219,7 +237,8 @@ function toggleMini() {
   render();
 }
 
-function play(id: string) {
+function play(id: string, how: LaunchHow = "choice") {
+  noteLaunch(id, how);
   state.currentId = id;
   state.step = 0;
   state.autoStep = null;
@@ -262,6 +281,200 @@ function hideOverlay() {
   if (!hotkeyErrors.toggle) appWindow.hide();
 }
 
+// ---------- Choix du BO au début de la partie ----------
+
+/** Journal local des parties (fichier app-data, jamais envoyé) : il nourrit le conseil. */
+let journal: GameEntry[] = [];
+const journalReady = invoke<string>("journal_read")
+  .then((text) => {
+    journal = parseJournal(text);
+  })
+  .catch(() => {});
+let journalTimer = 0;
+
+/** Écriture groupée, une demi-seconde après la dernière modification. */
+function saveJournal() {
+  clearTimeout(journalTimer);
+  journalTimer = window.setTimeout(() => invoke("journal_write", { text: serializeJournal(journal) }).catch(() => {}), 500);
+}
+
+/** Entrée du journal de la partie en cours. */
+function gameEntry(): GameEntry | undefined {
+  const game = state.game;
+  return game?.ongoing ? journal.find((e) => e.gameId === game.id) : undefined;
+}
+
+/** BO lancé entre deux parties : ton choix pour la suivante, gardé tel quel à la détection. */
+let preChosen: string | null = null;
+/** Raccourcis de choix actifs 5 min au plus quand aucun passage d'âge n'est vu (Windows). */
+const CHOICE_MS = 5 * 60_000;
+const REFUSED = "annulé";
+let countdownTimer = 0;
+
+/** Horloge du jeu : lue à l'écran, sinon estimée depuis le début de la partie selon AoE4World. */
+function gameClock(): { seconds: number; read: boolean } {
+  const read = clock.current(Date.now());
+  if (read !== null) return { seconds: read, read: true };
+  const started = Date.parse(state.game?.startedAt ?? "");
+  return { seconds: Number.isFinite(started) ? Math.max(0, (Date.now() - started) / 1000) : 0, read: false };
+}
+
+function noteLaunch(id: string, how: LaunchHow) {
+  stopCountdown();
+  const entry = gameEntry();
+  if (entry) {
+    entry.launches.push({ buildId: id, how, clock: Math.round(gameClock().seconds) });
+    saveJournal();
+  } else if (!state.game?.ongoing) {
+    preChosen = id;
+  }
+}
+
+/** Nouvelle partie : le BO choisi avant est gardé ; sinon l'écran de choix (ou les BO de la civ). */
+async function startGame(game: DetectedGame) {
+  const miniByChoice = state.mini && !state.finished;
+  state.civ = game.myCivilization;
+  state.style = "";
+  state.finished = false;
+  endChoice(false);
+  if (journal.some((e) => e.gameId === game.id)) {
+    // BoGo relancé en pleine partie : rien à reproposer.
+    saveSession();
+    if (state.view !== "play") showLibrary(game.myCivilization);
+    return;
+  }
+  const entry = newEntry(game, Date.now());
+  journal.push(entry);
+  saveJournal();
+  const pre = preChosen;
+  preChosen = null;
+  const adviceGame = { kind: game.kind, civ: game.myCivilization, randomCiv: game.randomCiv, opponentCiv: soloOpponent(game) };
+  const past = journal.filter((e) => e !== entry);
+  if (pre && pre === state.currentId && filterBuilds(state.library, game.myCivilization, "").some((b) => b.id === pre)) {
+    // BO choisi avant la partie : rien ne change, pas de compte à rebours ; les touches de
+    // catégorie permettent encore de changer d'avis jusqu'au passage d'âge.
+    entry.launches.push({ buildId: pre, how: "pre", clock: 0 });
+    const offer: Offer = {
+      game,
+      advice: null,
+      picks: categoryPicks(state.library, past, adviceGame),
+      countdownEnd: null,
+      autoOff: null,
+      until: Date.now() + CHOICE_MS,
+    };
+    state.offer = offer;
+    setTimeout(() => state.offer === offer && endChoice(), CHOICE_MS);
+    state.view = "play";
+    saveSession();
+    return render();
+  }
+  const advice = adviseBuild(state.library, past, adviceGame, Date.now());
+  state.mini = false;
+  if (!advice) {
+    // Rien à conseiller (aucun BO utilisable, Empire Wars, Nomade) : la liste des BO de la civ.
+    return showLibrary(game.myCivilization);
+  }
+  const offer: Offer = {
+    game,
+    advice,
+    picks: categoryPicks(state.library, past, adviceGame),
+    countdownEnd: null,
+    autoOff: advice.autoOff ?? (await momentBlocker(advice.build, miniByChoice)),
+    until: Date.now() + CHOICE_MS,
+  };
+  state.offer = offer;
+  state.view = "choice";
+  state.mini = miniByChoice;
+  saveSession();
+  if (!offer.autoOff) startCountdown();
+  setTimeout(() => state.offer === offer && endChoice(), CHOICE_MS);
+  if (state.locked) setLocked(false);
+  else render();
+}
+
+/** Garde-fous du moment : BoGo réduit ou masqué, partie déjà avancée, répartition à l'écran. */
+async function momentBlocker(build: SavedBuild, miniByChoice: boolean): Promise<string | null> {
+  if (miniByChoice) return "BoGo réduit";
+  if (!(await appWindow.isVisible().catch(() => true))) return "BoGo masqué";
+  const { seconds, read } = gameClock();
+  if (seconds > (read ? 120 : 180)) return `partie déjà commencée (${formatClock(seconds)})`;
+  if (state.hud && hudIsFresh() && distributionMismatch(build.build, state.hud.reading)) return "répartition différente de ce BO";
+  return null;
+}
+
+function startCountdown() {
+  const offer = state.offer!;
+  const end = Date.now() + COUNTDOWN_SECONDS * 1000;
+  offer.countdownEnd = end;
+  const tick = () => {
+    if (state.offer !== offer || offer.countdownEnd !== end) return;
+    const left = end - Date.now();
+    if (left <= 50) return play(offer.advice!.build.id, "auto");
+    if (state.view === "choice" && !state.mini) render();
+    countdownTimer = window.setTimeout(tick, Math.min(1000, left));
+  };
+  countdownTimer = window.setTimeout(tick, 1000);
+}
+
+/** Compte à rebours arrêté sans refus : BO lancé, écran de choix quitté ou réduit. */
+function stopCountdown() {
+  clearTimeout(countdownTimer);
+  const offer = state.offer;
+  if (offer?.countdownEnd) {
+    offer.countdownEnd = null;
+    offer.autoOff = "interrompu";
+  }
+}
+
+/** Lancement automatique annulé : un refus (deux de suite avec la civ le coupent). */
+function refuseCountdown() {
+  const offer = state.offer;
+  if (!offer?.countdownEnd) return;
+  clearTimeout(countdownTimer);
+  offer.countdownEnd = null;
+  offer.autoOff = REFUSED;
+  const entry = gameEntry();
+  if (entry) {
+    entry.refused = true;
+    saveJournal();
+  }
+  render();
+}
+
+/** Raccourci de catégorie : lance son BO, jusqu'au passage d'âge (même après un lancement). */
+function pickCategory(style: Style) {
+  const pick = state.offer?.picks[style];
+  if (pick && !(pick.id === state.currentId && state.view === "play")) play(pick.id);
+}
+
+/** Fin du choix (passage d'âge, 5 min, nouvelle partie) : ses raccourcis sont libérés. */
+function endChoice(redraw = true) {
+  stopCountdown();
+  if (!state.offer) return;
+  state.offer = null;
+  if (state.view === "choice") state.view = state.civ ? "civ" : "civs";
+  if (redraw) render();
+}
+
+/** Premier passage d'âge : noté au journal (il fixe le BO gardé), fin du choix. */
+function noteAgeUp() {
+  const entry = gameEntry();
+  if (entry && entry.ageUpAt === null) {
+    entry.ageUpAt = Math.round(gameClock().seconds);
+    saveJournal();
+  }
+  endChoice();
+}
+
+/** Étape passée par le moteur alors que le BO en cours a été lancé tout seul : il est suivi. */
+function noteAutoStep() {
+  const entry = gameEntry();
+  const last = entry?.launches[entry.launches.length - 1];
+  if (!entry || last?.how !== "auto" || last.buildId !== state.currentId) return;
+  entry.autoSteps += 1;
+  saveJournal();
+}
+
 /** Raccourcis que le système a refusés (déjà pris par une autre appli), affichés dans ⚙. */
 let hotkeyErrors: Partial<Record<HotkeyAction, string>> = {};
 
@@ -271,12 +484,37 @@ const HOTKEY_HANDLERS: Record<HotkeyAction, () => unknown> = {
   lock: () => setLocked(!state.locked),
   mini: () => toggleMini(),
   toggle: async () => ((await appWindow.isVisible()) ? appWindow.hide() : appWindow.show()),
+  launch: () => state.view === "choice" && state.offer?.advice && play(state.offer.advice.build.id),
+  cancel: () => refuseCountdown(),
+  cat1: () => pickCategory("boom"),
+  cat2: () => pickCategory("agressif"),
+  cat3: () => pickCategory("fast-castle"),
+  cat4: () => pickCategory("autre"),
 };
 
-async function registerHotkeys() {
+/** Raccourcis de choix seulement pendant le choix du début de partie, et dans ⚙ pour les vérifier. */
+function wantedHotkeys(): HotkeyAction[] {
+  const choice = state.view === "settings" || (!!state.offer && Date.now() < state.offer.until);
+  return HOTKEY_ACTIONS.filter((a) => choice || !a.choice).map((a) => a.action);
+}
+let registeredHotkeys = "";
+let hotkeyQueue = Promise.resolve();
+
+/** Une inscription à la fois : deux à la fois se désinscriraient l'une l'autre. */
+function registerHotkeys(): Promise<void> {
+  registeredHotkeys = wantedHotkeys().join();
+  hotkeyQueue = hotkeyQueue.then(doRegisterHotkeys, doRegisterHotkeys);
+  return hotkeyQueue;
+}
+
+async function doRegisterHotkeys() {
+  // Pendant la saisie d'un raccourci dans ⚙, aucun n'est actif ; la fin de saisie les remet.
+  if (capture) return;
   hotkeyErrors = {};
+  const wanted = wantedHotkeys();
+  registeredHotkeys = wanted.join();
   await unregisterAll().catch(() => {});
-  for (const { action } of HOTKEY_ACTIONS) {
+  for (const action of wanted) {
     try {
       await register(HOTKEYS[action], (event) => {
         if (event.state === "Pressed") HOTKEY_HANDLERS[action]();
@@ -340,16 +578,9 @@ async function pollGame() {
     state.gameError = null;
     state.game = game;
     if (game?.ongoing && game.id !== state.handledGameId) {
-      // Nouvelle partie : on propose les BO de la civ jouée.
       state.handledGameId = game.id;
-      state.civ = game.myCivilization;
-      state.style = "";
-      state.view = "civ";
-      state.mini = false;
-      state.finished = false;
-      saveSession();
-      if (state.locked) setLocked(false);
-      else render();
+      await journalReady;
+      await startGame(game);
       return;
     }
   } catch (err) {
@@ -390,7 +621,9 @@ function onVision(event: VisionEvent) {
   if (event.type === "top") {
     topText = event.tokens.map((t) => t.text).join(" ");
     // Deux lectures de suite, une seule fois par landmark (voir LandmarkWatch).
-    if (landmark.observe(event.tokens, Date.now()) && engine) {
+    const ageUp = landmark.observe(event.tokens, Date.now());
+    if (ageUp) noteAgeUp();
+    if (ageUp && engine) {
       engine.ageUpStarted();
       if (!state.finished && engine.state().completed) {
         finishBuild();
@@ -413,6 +646,7 @@ function onVision(event: VisionEvent) {
     state.hud = { reading, at: now };
     if (engine) {
       state.engine = engine.update(reading, now);
+      if (state.engine.index > state.step) noteAutoStep();
       if (state.engine.index !== state.step) {
         state.step = state.engine.index;
         saveSession();
@@ -555,6 +789,11 @@ function render() {
     if (capture) endCapture(null);
     hotkeyMessage = null;
   }
+  // Quitter (ou réduire) l'écran de choix arrête le compte à rebours, sans compter de refus.
+  if (state.view !== "choice" || state.mini) stopCountdown();
+  if (!capture && wantedHotkeys().join() !== registeredHotkeys) {
+    registerHotkeys().then(() => state.view === "settings" && render());
+  }
   document.body.classList.toggle("locked", state.locked);
   document.body.classList.toggle("mini", state.mini);
   if (state.mini) {
@@ -562,8 +801,8 @@ function render() {
     fitWindow();
     return;
   }
-  const views = { civs: civsView, civ: civView, settings: settingsView, play: () => playView(current()!) };
-  const view = state.view === "play" && !current() ? "civs" : state.view;
+  const views = { civs: civsView, civ: civView, settings: settingsView, play: () => playView(current()!), choice: choiceView };
+  const view = state.view === "play" && !current() ? "civs" : state.view === "choice" && !state.offer ? "civ" : state.view;
   const body = view === "civ" && !state.civ ? civsView() : views[view]();
   app.replaceChildren(view === "play" ? playHeader(current()!) : header(), body);
   fitWindow();
@@ -1115,7 +1354,8 @@ let hotkeyMessage: { text: string; error: boolean } | null = null;
 /** Raccourcis modifiables : « Changer », puis taper la combinaison voulue (Échap pour annuler). */
 function hotkeySettings(): HTMLElement {
   const box = h("div", "hotkeys", h("strong", "", "Raccourcis"));
-  for (const { action, label } of HOTKEY_ACTIONS) {
+  for (const { action, label, choice } of HOTKEY_ACTIONS) {
+    if (choice && action === "launch") box.append(h("span", "hotkeys-group", "Choix du BO au début de la partie"));
     const capturing = capture?.action === action;
     const key = h("span", capturing ? "key capturing" : "key", capturing ? "Tape la combinaison…" : KEYS[action]);
     const row = h("div", "hotkey-row", h("span", "", label), key);
@@ -1243,6 +1483,65 @@ function gameBanner(game: DetectedGame): HTMLElement {
     h("strong", "", `${game.myCivilization}${versus}`),
     h("span", "build-meta", `Partie détectée · ${details}`),
   );
+}
+
+/** Catégories de la bibliothèque, dans l'ordre des onglets, et leur raccourci. */
+const CHOICE_STYLES: [Style, HotkeyAction][] = [
+  ["boom", "cat1"],
+  ["agressif", "cat2"],
+  ["fast-castle", "cat3"],
+  ["autre", "cat4"],
+];
+
+/** Choix du début de partie : le BO proposé, pourquoi, le compte à rebours, un BO par catégorie. */
+function choiceView(): HTMLElement {
+  const { game, advice, picks } = state.offer!;
+  const view = h("main", "choice");
+  // Un seul en-tête : drapeau, civ (et adversaire en 1v1), mode et carte.
+  const banner = gameBanner(game);
+  banner.querySelector("strong")?.prepend(flag(game.myCivilization));
+  view.append(banner);
+  if (advice) {
+    const card = h(
+      "div",
+      "reco-card",
+      h("span", "reco-label", "Ton BO pour cette partie"),
+      h("strong", "reco-name", advice.build.build.name),
+      h("span", "build-meta", STYLES[advice.build.style]),
+      h("span", "fact", advice.reason),
+    );
+    const go = button(`▶ Lancer · ${KEYS.launch}`, "Lancer ce BO maintenant", () => play(advice.build.id));
+    go.className = "primary go";
+    card.append(go, countdownLine());
+    view.append(card);
+  }
+  const row = h("div", "catrow");
+  for (const [style, action] of CHOICE_STYLES) {
+    const pick = picks[style];
+    const tile = button("", pick ? `Lancer ${pick.build.name}` : "Aucun BO de cette catégorie pour cette civ", () => pickCategory(style));
+    tile.className = `catbtn${advice?.build.style === style ? " on" : ""}`;
+    tile.disabled = !pick;
+    tile.append(h("span", "key", KEYS[action]), h("span", "l", STYLES[style]), h("span", "b", pick?.build.name ?? "aucun BO"));
+    row.append(tile);
+  }
+  view.append(
+    row,
+    h("p", "hint", "Une touche de catégorie lance son BO, même après un lancement, jusqu'au passage d'âge."),
+    button("Voir tous les BO", "Tous les BO de la civ", () => showLibrary(game.myCivilization)),
+  );
+  return view;
+}
+
+function countdownLine(): HTMLElement {
+  const { countdownEnd, autoOff } = state.offer!;
+  if (countdownEnd === null) {
+    return h("div", "auto off", autoOff === REFUSED ? "Lancement auto annulé" : `Lancement auto désactivé : ${autoOff}`);
+  }
+  const left = Math.max(0, Math.ceil((countdownEnd - Date.now()) / 1000));
+  const fill = h("i");
+  fill.style.width = `${(left / COUNTDOWN_SECONDS) * 100}%`;
+  const cancel = button(`Annuler · ${KEYS.cancel}`, "Ne pas lancer ce BO tout seul", () => refuseCountdown());
+  return h("div", "auto", h("span", "", `Lancé tout seul dans ${left} s`), cancel, h("div", "countdown-bar", fill));
 }
 
 function settingsView(): HTMLElement {

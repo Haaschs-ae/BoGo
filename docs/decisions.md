@@ -38,6 +38,12 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   Rust propre à chaque système. Raccourcis Windows : Ctrl+Maj (pas Ctrl+Alt = AltGr en AZERTY),
   à valider avec des testeurs Windows. L'édition Windows est expérimentale (suivi manuel) tant
   que la lecture d'écran Windows n'existe pas.
+- **2026-10-29 · Écran de choix, v1 sur la bibliothèque** (sans attendre les données
+  aoe4guides). Règles : BO choisi avant la partie, mémoire contre la civ adverse (1v1), habitude
+  avec la civ, bibliothèque ; catégories = celles de la bibliothèque (1 Boom, 2 Agressif, 3 Fast
+  Castle, 4 Autre). Journal local dans un fichier app-data. Raccourcis de choix inscrits
+  seulement de la détection au premier passage d'âge (5 min au plus), modifiables comme les
+  autres. Pas encore : patch récent, cartes d'eau, plan « Âge II 4:20 », résultats.
 - **2026-10-29 · Raccourcis modifiables (⚙ › Raccourcis).** Combinaison avec ⌘/⌃/⌥ (Ctrl/Alt
   sous Windows) ou touche F seule. Refusés : touche seule ou avec ⇧ (gênerait la frappe),
   Ctrl+Alt+lettre sous Windows (AltGr), raccourcis du système, doublons ; un raccourci que le

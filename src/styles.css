@@ -942,3 +942,146 @@ label.scale input[type="range"] {
   grid-column: 1 / -1;
   margin: 0;
 }
+
+.hotkeys-group {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Choix du BO au début de la partie */
+main.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+main.choice .civ-header,
+main.choice .game-banner {
+  margin-bottom: 0;
+}
+
+.civ-header .random {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reco-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.reco-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.reco-name {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.reco-card .fact {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+}
+
+button.go {
+  align-self: stretch;
+  margin-top: 6px;
+  padding: 9px;
+  font-size: 15px;
+}
+
+.auto {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12.5px;
+}
+
+.auto.off {
+  display: block;
+  color: var(--muted);
+}
+
+.countdown-bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.countdown-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+
+.catrow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.catbtn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.catbtn .key {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.catbtn .l {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.catbtn .b {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 1.15;
+  color: var(--muted);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.catbtn.on {
+  border-color: var(--accent);
+  background: rgba(242, 182, 50, 0.12);
+}
+
+.catbtn.on .key {
+  color: var(--accent);
+}
+
+.game-banner .flag {
+  height: 15px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border-radius: 2px;
+}

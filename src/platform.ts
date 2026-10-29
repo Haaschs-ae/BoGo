@@ -10,14 +10,25 @@ export const IS_MAC = /Macintosh|Mac OS X/i.test(navigator.userAgent);
  */
 export const SCREEN_READING = IS_MAC;
 
-export type HotkeyAction = "next" | "previous" | "lock" | "toggle" | "mini";
+export type HotkeyAction = "next" | "previous" | "lock" | "toggle" | "mini" | "launch" | "cancel" | "cat1" | "cat2" | "cat3" | "cat4";
 
-export const HOTKEY_ACTIONS: { action: HotkeyAction; label: string }[] = [
+/**
+ * `choice` : raccourcis de l'écran de choix du début de partie, actifs seulement de la détection
+ * de la partie au premier passage d'âge (ils ne prennent pas ces touches aux autres applis le
+ * reste du temps).
+ */
+export const HOTKEY_ACTIONS: { action: HotkeyAction; label: string; choice?: true }[] = [
   { action: "next", label: "Étape suivante" },
   { action: "previous", label: "Étape précédente" },
   { action: "lock", label: "Verrouiller (clics vers le jeu)" },
   { action: "toggle", label: "Afficher / masquer BoGo" },
   { action: "mini", label: "Réduire / agrandir" },
+  { action: "launch", label: "Lancer le BO proposé", choice: true },
+  { action: "cancel", label: "Annuler le lancement auto", choice: true },
+  { action: "cat1", label: "BO Boom", choice: true },
+  { action: "cat2", label: "BO Agressif", choice: true },
+  { action: "cat3", label: "BO Fast Castle", choice: true },
+  { action: "cat4", label: "BO Autre", choice: true },
 ];
 
 /**
@@ -26,7 +37,19 @@ export const HOTKEY_ACTIONS: { action: HotkeyAction; label: string }[] = [
  */
 export const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = (() => {
   const mod = IS_MAC ? "CommandOrControl+Alt" : "Control+Shift";
-  return { next: `${mod}+ArrowRight`, previous: `${mod}+ArrowLeft`, lock: `${mod}+KeyL`, toggle: `${mod}+KeyB`, mini: `${mod}+KeyM` };
+  return {
+    next: `${mod}+ArrowRight`,
+    previous: `${mod}+ArrowLeft`,
+    lock: `${mod}+KeyL`,
+    toggle: `${mod}+KeyB`,
+    mini: `${mod}+KeyM`,
+    launch: `${mod}+Enter`,
+    cancel: `${mod}+Backspace`,
+    cat1: `${mod}+Digit1`,
+    cat2: `${mod}+Digit2`,
+    cat3: `${mod}+Digit3`,
+    cat4: `${mod}+Digit4`,
+  };
 })();
 
 /** Raccourcis en vigueur (par défaut, ou choisis dans les réglages). */
@@ -51,7 +74,7 @@ const MAC_MODIFIERS: Record<string, string> = { commandorcontrol: "⌘", command
 const WIN_MODIFIERS: Record<string, string> = { commandorcontrol: "Ctrl+", control: "Ctrl+", ctrl: "Ctrl+", alt: "Alt+", option: "Alt+", shift: "Maj+", super: "Win+", command: "Win+", meta: "Win+" };
 const KEY_LABELS: Record<string, string> = {
   arrowright: "→", arrowleft: "←", arrowup: "↑", arrowdown: "↓",
-  space: "Espace", enter: "Entrée", backspace: "⌫", delete: "Suppr", tab: "Tab", escape: "Échap",
+  space: "Espace", enter: IS_MAC ? "↵" : "Entrée", backspace: "⌫", delete: "Suppr", tab: "Tab", escape: "Échap",
   pageup: "Page↑", pagedown: "Page↓", home: "Début", end: "Fin",
 };
 

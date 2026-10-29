@@ -46,9 +46,18 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
   `aoe4world.com/account/profile_token` et copie la valeur de `api_key`).
 - **Détection de la partie** : toutes les 10 secondes, BoGo demande à AoE4World ta
   dernière partie. Quand une nouvelle partie commence, le point vert s'allume dans
-  l'en-tête et la bibliothèque se filtre sur ta civ, avec un bandeau
-  « Ta civ contre la civ adverse ». AoE4World voit la partie quelques secondes après
-  son lancement.
+  l'en-tête et BoGo ouvre le **choix du BO** (ou, s'il n'a rien à proposer, la liste des BO
+  de ta civ). AoE4World voit la partie quelques secondes après son lancement.
+- **Choix du BO au début de la partie** : BoGo propose un BO de ta bibliothèque et dit
+  pourquoi, avec un fait (« Gardé à 3 de tes 4 dernières parties avec English », « Gardé la
+  dernière fois contre French » en 1v1, « Le plus récent de ta bibliothèque »). ▶ Lancer
+  (⌘⌥↵), ou une touche par catégorie : ⌘⌥1 Boom, ⌘⌥2 Agressif, ⌘⌥3 Fast Castle, ⌘⌥4 Autre,
+  actives jusqu'au premier passage d'âge pour changer d'avis. En **1v1 classé ou rapide**, un
+  BO que tu as déjà joué se lance tout seul après **8 s** (⌘⌥⌫ annule) ; jamais en équipe ni
+  en personnalisée, jamais un BO jamais joué, ni après 2:00 de jeu, ni BoGo masqué ou réduit,
+  ni si ta répartition à l'écran ne correspond pas au BO, ni après 2 annulations de suite avec
+  cette civ. Un BO lancé depuis la bibliothèque **avant** la partie est gardé tel quel.
+  Empire Wars et Nomade : pas de conseil.
 - **Bibliothèque** : une grille avec le drapeau de chaque civ et le nombre de BO
   enregistrés. Clique sur une civ pour voir ses BO, rangés par style (Boom, Agressif,
   Fast Castle, Autre), puis ▶ sur le BO voulu.
@@ -172,6 +181,9 @@ Le calibrage des zones à lire est dans [docs/hud-calibration.md](docs/hud-calib
   BO pour ta civ, BO calé sur l'horloge du jeu lue à l'écran (fait, à valider en jeu).
 - **Étape 3** (fait, à valider en jeu) : avancement automatique selon les villageois,
   attente des passages d'âge et des TC, alertes de répartition et d'inactifs.
+- **Étape 4** (fait, à valider en jeu) : choix du BO au début de la partie, d'après ta
+  bibliothèque et ton journal local, avec lancement automatique encadré. Les BO de la
+  communauté aoe4guides viendront ensuite (il faut d'abord sonder leur API depuis le Mac).
 - **Ensuite** : version autonome, qui démarre avec le Mac et s'ouvre seule quand
   une partie commence.
 
@@ -242,7 +254,11 @@ défendable tant qu'il respecte ces limites, qui sont des règles du projet :
   aucune télémétrie.
 - Ta clé API et ta bibliothèque sont stockées sur ta machine seulement. Ne partage jamais de capture
   des réglages ⚙ sans masquer la clé.
-- Supprimer les données de BoGo : supprimer l'appli et le dossier `~/Library/WebKit/com.haaschs.bogo`.
+- Le **journal des parties** (civ, mode, carte, BO lancés et gardés ; ni nom ni identifiant
+  d'adversaire) reste sur ta machine, dans `~/Library/Application Support/com.haaschs.bogo/journal.json` :
+  il ne sert qu'à choisir le BO du début de partie.
+- Supprimer les données de BoGo : supprimer l'appli et les dossiers `~/Library/WebKit/com.haaschs.bogo`
+  et `~/Library/Application Support/com.haaschs.bogo`.
 
 ## Mentions légales
 

@@ -113,6 +113,13 @@ l'identifiant d'un adversaire.
 
 ## À faire : v1, puis v2
 
+**Fait (29/10, v1 sur la bibliothèque)** : journal (`src/journal.ts`, fichier app-data),
+règles 2 à 5 en fonctions pures testées (`src/advice.ts`), carte de choix, compte à rebours
+de 8 s et ses garde-fous (1v1 classé ou rapide, horloge, BO déjà joué, 2 refus, BoGo masqué
+ou réduit, répartition à l'écran), raccourcis de catégorie et lancer / annuler. Catégories :
+celles de la bibliothèque (Boom, Agressif, Fast Castle, Autre). Reste de la v1 : cache et
+règle aoe4guides (6), cartes d'eau (7), patch récent, plan « Âge II 4:20 · 2e TC 6:10 ».
+
 v1 : journal ; cache aoe4guides avec sonde préalable ; règles 1 à 7 en fonctions pures
 testées, constantes dans un seul fichier ; carte C compacte (titre, catégorie, plan « Âge II
 4:20 · 2e TC 6:10 », une raison, raccourcis par catégorie) ; compte à rebours avec ses

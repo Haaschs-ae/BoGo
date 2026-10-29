@@ -9,6 +9,8 @@ export interface DetectedGame {
   map: string;
   startedAt: string;
   myCivilization: string;
+  /** Civ tirée au sort (AoE4World la donne quand même). */
+  randomCiv: boolean;
   opponentCivilizations: string[];
   /** Deux équipes d'un joueur chacune. */
   oneVsOne: boolean;
@@ -47,6 +49,7 @@ export function parseLastGame(data: unknown, profileId: string): DetectedGame | 
     map: typeof data.map === "string" ? data.map : "",
     startedAt: typeof data.started_at === "string" ? data.started_at : "",
     myCivilization: civilizationName(me.civilization),
+    randomCiv: me.civilization_randomized === true,
     opponentCivilizations: teams
       .filter((t) => t !== myTeam)
       .flat()

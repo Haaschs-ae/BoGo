@@ -163,6 +163,33 @@ fn record_event(app: AppHandle, event: serde_json::Value) {
     record(&app, event);
 }
 
+/// Journal local des parties (conseil de BO au début de la partie) : app-data/journal.json.
+fn journal_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("journal.json"))
+}
+
+/// Contenu du journal, ou une chaîne vide s'il n'existe pas encore.
+#[tauri::command]
+fn journal_read(app: AppHandle) -> Result<String, String> {
+    match std::fs::read_to_string(journal_path(&app)?) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Réécrit le journal d'un bloc (fichier temporaire puis renommage : jamais à moitié écrit).
+#[tauri::command]
+fn journal_write(app: AppHandle, text: String) -> Result<(), String> {
+    let path = journal_path(&app)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
 /// Processus bogo-vision en cours (lecture de l'horloge à l'écran).
 #[derive(Default)]
 struct Vision(Mutex<Option<Child>>);
@@ -272,6 +299,8 @@ pub fn run() {
             stop_vision,
             set_recording,
             record_event,
+            journal_read,
+            journal_write,
             quit
         ])
         .setup(|_app| {

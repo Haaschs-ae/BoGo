@@ -28,6 +28,7 @@ describe("parseLastGame", () => {
       map: "Dry Arabia",
       startedAt: "2026-10-29T10:00:00.000Z",
       myCivilization: "Knights Templar",
+      randomCiv: false,
       opponentCivilizations: ["English", "Zhu Xi's Legacy"],
       oneVsOne: false,
     });
@@ -40,6 +41,13 @@ describe("parseLastGame", () => {
     expect(soloOpponent(parseLastGame(game, "5612909")!)).toBeNull();
     const ffa = parseLastGame({ ...game, kind: "custom", teams: [[player(5612909, "rus")], [player(8, "french")], [player(9, "mongols")]] }, "5612909");
     expect(soloOpponent(ffa!)).toBeNull();
+  });
+
+  it("repère une civ tirée au sort", () => {
+    const random = { ...player(5612909, "rus"), civilization_randomized: true };
+    const parsed = parseLastGame({ ...game, kind: "rm_1v1", teams: [[random], [player(9, "french")]] }, "5612909");
+    expect(parsed?.myCivilization).toBe("Rus");
+    expect(parsed?.randomCiv).toBe(true);
   });
 
   it("accepte les joueurs rangés sous une clé « player »", () => {
