@@ -16,6 +16,14 @@ import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
 import {
+  AGE_NAMES,
+  BuildEngine,
+  nextVillagerResources,
+  villagerTarget,
+  type EngineState,
+} from "./engine";
+import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
+import {
   addBuild,
   filterBuilds,
   loadLibrary,
@@ -52,6 +60,7 @@ interface Settings {
 
 type VisionEvent =
   | { type: "clock"; seconds: number; text: string }
+  | { type: "hud"; tokens: OcrToken[] }
   | { type: "status"; code: "ok" | "no_window" | "no_clock" }
   | { type: "error"; code: string; message: string }
   | { type: "stopped" };
@@ -81,6 +90,9 @@ interface State {
   vision: { status: string; error: string | null };
   /** Dernière étape choisie d'après l'horloge : on ne la réimpose pas si le joueur a changé d'étape à la main. */
   autoStep: number | null;
+  /** Dernière lecture du panneau (population, ressources, villageois) et son heure. */
+  hud: { reading: HudReading; at: number } | null;
+  engine: EngineState | null;
 }
 
 const state: State = {
@@ -98,9 +110,20 @@ const state: State = {
   handledGameId: null,
   vision: { status: "", error: null },
   autoStep: null,
+  hud: null,
+  engine: null,
 };
 const clock = new ClockTracker();
+/** Moteur du BO en cours, recréé à chaque lancement d'un BO. */
+let engine: BuildEngine | null = null;
+const RESOURCE_ICONS: Record<Resource, [string, string]> = {
+  food: ["🍖", "nourriture"],
+  wood: ["🪵", "bois"],
+  gold: ["🪙", "or"],
+  stone: ["🪨", "pierre"],
+};
 restoreSession();
+resetEngine();
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const appWindow = getCurrentWindow();
@@ -128,8 +151,27 @@ function goToStep(step: number) {
   const build = current();
   if (!build) return;
   state.step = Math.max(0, Math.min(step, build.build.build_order.length - 1));
+  engine?.setStep(state.step);
   saveSession();
   render();
+}
+
+function resetEngine() {
+  const saved = current();
+  if (!saved) {
+    engine = null;
+    return;
+  }
+  // La civ jouée sert au coût du passage d'âge (les Mongols paient en pierre).
+  const civ = state.game?.ongoing ? state.game.myCivilization : civilizationsOf(saved.build)[0];
+  engine = new BuildEngine(saved.build.build_order, civ);
+  engine.setStep(state.step);
+  state.engine = null;
+}
+
+/** Le panneau a été lu il y a peu : c'est lui qui pilote le BO (sinon l'horloge, sinon le clavier). */
+function hudIsFresh(now = Date.now()): boolean {
+  return !!state.hud && now - state.hud.at < 5000;
 }
 
 function play(id: string) {
@@ -137,6 +179,7 @@ function play(id: string) {
   state.step = 0;
   state.autoStep = null;
   state.view = "play";
+  resetEngine();
   saveSession();
   render();
 }
@@ -244,13 +287,31 @@ async function startVision() {
 }
 
 function onVision(event: VisionEvent) {
+  if (event.type === "hud") {
+    const reading = parseHud(event.tokens);
+    if (!reading) return;
+    const now = Date.now();
+    state.hud = { reading, at: now };
+    if (engine) {
+      state.engine = engine.update(reading, now);
+      if (state.engine.index !== state.step) {
+        state.step = state.engine.index;
+        saveSession();
+      }
+    }
+    if (state.view === "play") render();
+    else updateVisionStatus();
+    return;
+  }
   if (event.type === "clock") {
     if (clock.read(event.seconds, Date.now()) === null) return;
     const build = current();
-    const target = build ? stepForClock(build.build.build_order, event.seconds) : null;
+    // L'horloge ne pilote le BO que si le panneau des villageois n'est pas lu.
+    const target = build && !hudIsFresh() ? stepForClock(build.build.build_order, event.seconds) : null;
     if (target !== null && target !== state.autoStep) {
       state.autoStep = target;
       state.step = target;
+      engine?.setStep(target);
       saveSession();
     }
     // La vue de jeu n'a pas de champ de saisie : on peut la redessiner chaque seconde.
@@ -341,22 +402,28 @@ function playView(saved: SavedBuild): HTMLElement {
   const steps = saved.build.build_order;
   const step = steps[state.step];
   const next = steps[state.step + 1];
+  const now = Date.now();
+  const hud = hudIsFresh(now) ? state.hud!.reading : null;
+  const auto = hud && state.engine?.index === state.step ? state.engine : null;
 
-  const gameTime = clock.current(Date.now());
+  const gameTime = clock.current(now);
   const followsClock = stepForClock(steps, 0) !== null;
   const count = h("span", "bo-count", `${state.step + 1}/${steps.length}`);
   if (gameTime !== null) {
     const live = h("span", "chip live", `⏱ ${formatClock(gameTime)}`);
-    live.title = followsClock ? "Horloge du jeu : le BO avance tout seul" : "Horloge du jeu";
+    live.title = hud ? "Horloge du jeu" : followsClock ? "Horloge du jeu : le BO avance tout seul" : "Horloge du jeu";
     count.prepend(live, " ");
   }
 
   const view = h("main", "play");
-  view.append(
-    h("div", "bo-title", h("span", "bo-name", saved.build.name), count),
-    targets(step),
-    notes(step.notes, "notes"),
-  );
+  view.append(h("div", "bo-title", h("span", "bo-name", saved.build.name), count));
+  if (auto) view.append(...alerts(auto, hud!));
+  if (auto && auto.goal.kind !== "villagers") view.append(goalBanner(auto, hud!));
+  else {
+    const hint = nextVillagersHint(steps);
+    if (hint) view.append(hint);
+  }
+  view.append(targets(step, hud), notes(step.notes, "notes"));
   if (next) view.append(h("div", "next-label", "Ensuite"), notes(next.notes.slice(0, 2), "notes next"));
 
   const nav = h("div", "nav");
@@ -364,32 +431,84 @@ function playView(saved: SavedBuild): HTMLElement {
   const nextBtn = button("▶", "Étape suivante", () => goToStep(state.step + 1));
   prev.disabled = state.step === 0;
   nextBtn.disabled = !next;
-  const navHint = gameTime !== null && !followsClock ? "Pas de temps dans ce BO : ⌘⌥← / ⌘⌥→" : "⌘⌥← / ⌘⌥→";
-  nav.append(prev, h("span", "hint", navHint), nextBtn);
+  const mode = hud
+    ? "Suivi des villageois · ⌘⌥← / ⌘⌥→"
+    : gameTime !== null && !followsClock
+      ? "Pas de temps dans ce BO : ⌘⌥← / ⌘⌥→"
+      : "⌘⌥← / ⌘⌥→";
+  nav.append(prev, h("span", "hint", mode), nextBtn);
   view.append(nav);
   return view;
 }
 
-function targets(step: BuildOrderStep): HTMLElement {
-  const r = step.resources;
-  const items: [string, number | string | undefined, string][] = [
-    ["🕒", step.time, "Temps visé"],
-    ["👤", step.villager_count, "Villageois"],
-    ["🍖", r.food, "Nourriture"],
-    ["🪵", r.wood, "Bois"],
-    ["🪙", r.gold, "Or"],
-    ["🪨", r.stone, "Pierre"],
-    ["🔨", r.builder, "Bâtisseurs"],
-  ];
-  const row = h("div", "targets");
-  for (const [icon, value, label] of items) {
-    // -1 signifie « non précisé » dans le format RTS_Overlay.
-    if (value === undefined || value === -1) continue;
-    const chip = h("span", "chip", `${icon} ${value}`);
-    chip.title = label;
-    row.append(chip);
+/** « Passe à l'âge II » ou « Construis un TC », avec les ressources qui manquent. */
+function goalBanner(auto: EngineState, hud: HudReading): HTMLElement {
+  const title =
+    auto.goal.kind === "age" ? `⬆ Passe à l'âge ${AGE_NAMES[auto.goal.age] ?? auto.goal.age}` : "🏰 Construis un TC";
+  const banner = h("div", auto.affordable ? "goal ready" : "goal", h("strong", "", title));
+  const costs = h("div", "goal-costs");
+  for (const [r, amount] of Object.entries(auto.cost ?? {}) as [Resource, number][]) {
+    const have = hud.stock[r];
+    const chip = h("span", have >= amount ? "chip ok" : "chip", `${RESOURCE_ICONS[r][0]} ${have}/${amount}`);
+    chip.title = RESOURCE_ICONS[r][1];
+    costs.append(chip);
   }
-  if (step.age > 0) row.append(h("span", "chip age", `Âge ${["I", "II", "III", "IV"][step.age - 1] ?? step.age}`));
+  banner.append(costs, h("span", "goal-hint", auto.affordable ? "C'est le moment : clique !" : "Garde les ressources pour ça"));
+  return banner;
+}
+
+function alerts(auto: EngineState, hud: HudReading): HTMLElement[] {
+  const list: HTMLElement[] = [];
+  const m = auto.misplacement;
+  if (m) {
+    const [fromIcon, fromName] = RESOURCE_ICONS[m.from];
+    const vils = m.count > 1 ? `${m.count} vils` : "1 vil";
+    const move = m.count > 1 ? "envoie-les" : "envoie-le";
+    const text = m.to
+      ? `⚠ ${vils} de trop sur ${fromIcon} ${fromName} → ${move} sur ${RESOURCE_ICONS[m.to][0]} ${RESOURCE_ICONS[m.to][1]}`
+      : `⚠ ${vils} de trop sur ${fromIcon} ${fromName}`;
+    list.push(h("div", "alert", text));
+  }
+  if (hud.idle > 0) list.push(h("div", "alert warn", `💤 ${hud.idle} vil${hud.idle > 1 ? "s" : ""} inactif${hud.idle > 1 ? "s" : ""}`));
+  return list;
+}
+
+function nextVillagersHint(steps: BuildOrderStep[]): HTMLElement | null {
+  const parts = (Object.entries(nextVillagerResources(steps, state.step)) as [Resource, number][]).map(
+    ([r, n]) => `${RESOURCE_ICONS[r][0]} ${RESOURCE_ICONS[r][1]} (+${n})`,
+  );
+  return parts.length ? h("div", "next-vils", `Prochains vils → ${parts.join(", ")}`) : null;
+}
+
+function targets(step: BuildOrderStep, hud: HudReading | null): HTMLElement {
+  const row = h("div", "targets");
+  const chip = (text: string, title: string, className = "chip") => {
+    const c = h("span", className, text);
+    c.title = title;
+    row.append(c);
+  };
+  if (step.time) chip(`🕒 ${step.time}`, "Temps visé");
+  const vilTarget = villagerTarget(step);
+  if (hud) chip(`👤 ${hud.villagers}/${vilTarget}`, "Villageois : en jeu / visés", hud.villagers >= vilTarget ? "chip ok" : "chip");
+  else if (vilTarget > 0) chip(`👤 ${vilTarget}`, "Villageois visés");
+
+  for (const r of RESOURCES) {
+    const target = step.resources[r];
+    // -1 signifie « non précisé » dans le format RTS_Overlay.
+    if (target === -1) continue;
+    const [icon, name] = RESOURCE_ICONS[r];
+    if (!hud) {
+      chip(`${icon} ${target}`, name);
+      continue;
+    }
+    const have = hud.gatherers[r];
+    if (have === 0 && target === 0) continue;
+    const status = have > target ? "chip over" : have === target ? "chip ok" : "chip";
+    chip(`${icon} ${have}/${target}`, `${name} : villageois en jeu / visés`, status);
+  }
+  const builder = step.resources.builder;
+  if (builder !== undefined && builder > 0) chip(`🔨 ${builder}`, "Bâtisseurs");
+  if (step.age > 0) chip(`Âge ${["I", "II", "III", "IV"][step.age - 1] ?? step.age}`, "Âge", "chip age");
   return row;
 }
 
@@ -521,7 +640,15 @@ function visionText(): string {
   if (!state.settings.readScreen) return "";
   if (state.vision.error) return state.vision.error;
   const time = clock.current(Date.now());
-  if (time !== null) return `Horloge du jeu lue : ${formatClock(time)}.`;
+  const parts: string[] = [];
+  if (time !== null) parts.push(`horloge ${formatClock(time)}`);
+  if (hudIsFresh()) {
+    const r = state.hud!.reading;
+    const gatherers = RESOURCES.map((res) => `${RESOURCE_ICONS[res][0]}${r.gatherers[res]}`).join(" ");
+    parts.push(`${r.villagers} villageois (${gatherers}, ${r.idle} inactif${r.idle > 1 ? "s" : ""})`);
+    parts.push(`stock ${RESOURCES.map((res) => `${RESOURCE_ICONS[res][0]}${r.stock[res]}`).join(" ")}`);
+  }
+  if (parts.length) return `Lu à l'écran : ${parts.join(" · ")}.`;
   return VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
 }
 
@@ -584,7 +711,7 @@ function settingsView(): HTMLElement {
       "La clé sert à détecter aussi les parties personnalisées. Connecté sur aoe4world.com, ouvre " +
         "aoe4world.com/account/profile_token et copie la valeur de « api_key ».",
     ),
-    h("label", "checkbox", readScreen, "Lire l'horloge du jeu dans GeForce Now (le BO avance tout seul)"),
+    h("label", "checkbox", readScreen, "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"),
     visionStatus(),
     save,
     message,

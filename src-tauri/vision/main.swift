@@ -1,9 +1,12 @@
 // bogo-vision : lit l'horloge de la partie AoE4 dans la fenêtre GeForce Now.
 //
 // Lancé par BoGo, il capture la fenêtre une fois par seconde (ScreenCaptureKit),
-// lit le texte en haut au centre (Vision) et écrit une ligne JSON par événement
-// sur la sortie standard :
+// lit l'horloge en haut au centre et le panneau en bas à gauche (Vision), et écrit
+// une ligne JSON par événement sur la sortie standard :
 //   {"type":"clock","seconds":125,"text":"02:05"}
+//   {"type":"hud","tokens":[{"text":"7/10","x":0.2,"y":0.1,"w":0.1,"h":0.05}, …]}
+//     (textes lus dans le panneau, positions en fraction de la zone, origine en haut à gauche ;
+//      BoGo en déduit population, ressources et villageois par ressource)
 //   {"type":"status","code":"no_window"|"no_clock"|"ok"}
 //   {"type":"error","code":"permission"|"capture","message":"…"}
 // Il s'arrête de lui-même quand BoGo se ferme (la sortie standard se ferme).
@@ -18,6 +21,8 @@ setvbuf(stdout, nil, _IOLBF, 0)
 /// Zone lue, en fraction de la fenêtre : bande en haut au centre. Assez large pour
 /// couvrir un stream 16:9 avec bandes noires dans un écran 16:10.
 let clockArea = CGRect(x: 0.35, y: 0.0, width: 0.30, height: 0.25)
+/// Panneau population / ressources / villageois, en bas à gauche, avec de la marge.
+let hudArea = CGRect(x: 0.0, y: 0.6, width: 0.18, height: 0.4)
 
 func emit(_ object: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: object),
@@ -69,17 +74,21 @@ func capture(_ window: SCWindow) async throws -> CGImage {
     return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
 }
 
-func readClock(in image: CGImage) -> (seconds: Int, text: String)? {
+/// Lit le texte d'une zone de l'image (fractions de l'image, origine en haut à gauche).
+func recognizeText(in image: CGImage, area: CGRect) -> [VNRecognizedTextObservation] {
     let w = CGFloat(image.width), h = CGFloat(image.height)
-    let area = CGRect(x: w * clockArea.minX, y: h * clockArea.minY, width: w * clockArea.width, height: h * clockArea.height)
-    guard let strip = image.cropping(to: area.integral) else { return nil }
+    let pixels = CGRect(x: w * area.minX, y: h * area.minY, width: w * area.width, height: h * area.height)
+    guard let crop = image.cropping(to: pixels.integral) else { return [] }
 
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = false
-    try? VNImageRequestHandler(cgImage: strip).perform([request])
+    try? VNImageRequestHandler(cgImage: crop).perform([request])
+    return request.results ?? []
+}
 
-    for observation in request.results ?? [] {
+func readClock(in image: CGImage) -> (seconds: Int, text: String)? {
+    for observation in recognizeText(in: image, area: clockArea) {
         for candidate in observation.topCandidates(3) {
             for token in candidate.string.split(whereSeparator: \.isWhitespace) {
                 if let seconds = parseClock(String(token)) { return (seconds, String(token)) }
@@ -87,6 +96,15 @@ func readClock(in image: CGImage) -> (seconds: Int, text: String)? {
         }
     }
     return nil
+}
+
+func readHud(in image: CGImage) -> [[String: Any]] {
+    recognizeText(in: image, area: hudArea).compactMap { observation in
+        guard let text = observation.topCandidates(1).first?.string else { return nil }
+        // Vision place l'origine en bas à gauche : on la ramène en haut à gauche.
+        let box = observation.boundingBox
+        return ["text": text, "x": box.minX, "y": 1 - box.maxY, "w": box.width, "h": box.height]
+    }
 }
 
 func run() async {
@@ -109,6 +127,7 @@ func run() async {
                 } else {
                     emitStatus("no_clock")
                 }
+                emit(["type": "hud", "tokens": readHud(in: image)])
             } else {
                 emitStatus("no_window")
             }

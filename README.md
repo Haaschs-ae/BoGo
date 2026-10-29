@@ -45,12 +45,30 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
   JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
 - **Pendant la partie** : l'étape en cours (villageois visés, répartition par
   ressource, âge, temps visé), ses consignes et un aperçu de la suivante.
-- **Horloge du jeu** : BoGo lit l'horloge en haut de l'écran dans la fenêtre GeForce
-  Now (macOS 14 ou plus). Si le BO indique un temps pour chaque étape, il avance tout
-  seul ; un changement d'étape au clavier reste pris en compte jusqu'à l'étape
-  suivante du BO. Au premier lancement, macOS demande d'autoriser BoGo dans
-  **Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran**,
-  puis de relancer BoGo. L'option se coupe dans les réglages (⚙).
+- **Suivi automatique** : BoGo lit l'écran de GeForce Now une fois par seconde (macOS 14
+  ou plus) : l'horloge, et le panneau en bas à gauche (population, villageois inactifs,
+  stocks, villageois par ressource).
+  - Le BO avance dès qu'un villageois de plus que la cible de l'étape apparaît : avec
+    6 vils aux moutons, le 7e fait passer à l'étape qui dit où envoyer les suivants
+    (« Prochains vils → 🪵 bois (+3) »).
+  - Sur une étape « passe l'âge » ou « construis un TC », BoGo attend : un bandeau
+    montre les ressources qu'il manque, puis devient vert et clignote quand tu as de
+    quoi cliquer. L'étape suivante s'affiche quand les ressources sont dépensées d'un
+    coup (clic sur le monument, TC posé). Coûts habituels : Féodal 400 🍖 / 200 🪙,
+    Château 1200 / 600, Impérial 2400 / 1200 (pierre au lieu de l'or pour les Mongols),
+    TC 400 🪵 / 300 🪨.
+  - Chaque ressource affiche villageois en jeu / visés. Un villageois de trop sur une
+    ressource pendant plus de 3 secondes déclenche une alerte (« 1 vil de trop sur 🍖
+    → envoie-le sur 🪙 »), tout comme les villageois inactifs.
+  - Un changement d'étape au clavier est respecté jusqu'au prochain nouveau villageois.
+  - Sans lecture du panneau, BoGo se rabat sur l'horloge (si chaque étape a un temps),
+    sinon sur le clavier.
+  - Au premier lancement, macOS demande d'autoriser BoGo dans **Réglages Système →
+    Confidentialité et sécurité → Enregistrement de l'écran**, puis de relancer BoGo.
+    Les réglages (⚙) montrent ce que BoGo lit à l'écran, et permettent de couper la
+    lecture.
+  - Les villageois qui construisent ne sont pas comptés dans le panneau du jeu : pendant
+    une construction, le BO peut attendre un peu avant d'avancer.
 
 | Raccourci | Action |
 |-----------|--------|
@@ -94,7 +112,8 @@ Le calibrage des zones à lire est dans [docs/hud-calibration.md](docs/hud-calib
   étapes au clavier.
 - **Étape 2** : détection de la partie et des civs via AoE4World, proposition des
   BO pour ta civ, BO calé sur l'horloge du jeu lue à l'écran (fait, à valider en jeu).
-- **Étape 3** : avancement automatique selon les villageois par ressource.
+- **Étape 3** (fait, à valider en jeu) : avancement automatique selon les villageois,
+  attente des passages d'âge et des TC, alertes de répartition et d'inactifs.
 - **Ensuite** : version autonome, qui démarre avec le Mac et s'ouvre seule quand
   une partie commence.
 

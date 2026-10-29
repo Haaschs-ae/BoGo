@@ -1,0 +1,96 @@
+// Lecture du panneau en bas à gauche de l'interface d'AoE4 à partir du texte reconnu
+// par bogo-vision : population, villageois inactifs, stocks et villageois par ressource.
+//
+//   7/10        zZ 0          ← population / max, villageois inactifs
+//   🍖 0        👤 6          ← stock, villageois sur la ressource
+//   🪵 200      👤 0
+//   🪙 100      👤 0
+//   🪨 0        👤 0
+
+export const RESOURCES = ["food", "wood", "gold", "stone"] as const;
+export type Resource = (typeof RESOURCES)[number];
+export type Resources = Record<Resource, number>;
+
+/** Texte reconnu, position en fraction de la zone lue, origine en haut à gauche. */
+export interface OcrToken {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface HudReading {
+  population: number;
+  populationMax: number;
+  idle: number;
+  stock: Resources;
+  gatherers: Resources;
+  /** Villageois au travail sur une ressource + inactifs (les bâtisseurs n'apparaissent pas). */
+  villagers: number;
+}
+
+interface NumberToken {
+  value: number;
+  cx: number;
+  cy: number;
+}
+
+const POPULATION = /^(\d+)\/(\d+)$/;
+
+export function parseHud(tokens: OcrToken[]): HudReading | null {
+  const pop = tokens.find((t) => POPULATION.test(clean(t.text)));
+  if (!pop) return null;
+  const [, current, max] = POPULATION.exec(clean(pop.text))!;
+  const popCy = pop.y + pop.h / 2;
+  const rowTolerance = pop.h * 0.6;
+
+  const numbers = tokens.filter((t) => t !== pop).flatMap(numbersOf);
+  const idleToken = numbers
+    .filter((n) => Math.abs(n.cy - popCy) <= rowTolerance && n.cx > pop.x + pop.w)
+    .sort((a, b) => a.cx - b.cx)[0];
+
+  // Les villageois par ressource sont alignés sur les inactifs ; les stocks sur la population.
+  const gatherersX = idleToken?.cx ?? pop.x + 3 * pop.w;
+  const columnSplit = (pop.x + gatherersX) / 2;
+
+  const rows: NumberToken[][] = [];
+  for (const n of numbers.filter((n) => n.cy > popCy + rowTolerance).sort((a, b) => a.cy - b.cy)) {
+    const row = rows[rows.length - 1];
+    if (row && n.cy - row[0].cy <= rowTolerance) row.push(n);
+    else rows.push([n]);
+  }
+  if (rows.length < RESOURCES.length) return null;
+
+  const stock = {} as Resources;
+  const gatherers = {} as Resources;
+  for (const [i, resource] of RESOURCES.entries()) {
+    const row = rows[i];
+    const left = row.filter((n) => n.cx < columnSplit).sort((a, b) => a.cx - b.cx)[0];
+    const right = row.filter((n) => n.cx >= columnSplit).sort((a, b) => b.cx - a.cx)[0];
+    if (!left) return null;
+    stock[resource] = left.value;
+    // Un compteur à 0 est grisé et peut ne pas être lu.
+    gatherers[resource] = right?.value ?? 0;
+  }
+
+  const idle = idleToken?.value ?? 0;
+  const villagers = RESOURCES.reduce((sum, r) => sum + gatherers[r], idle);
+  const population = Number(current);
+  // Plus de villageois que de population : lecture fausse.
+  if (villagers > population) return null;
+  return { population, populationMax: Number(max), idle, stock, gatherers, villagers };
+}
+
+function clean(text: string): string {
+  return text.replace(/[Oo]/g, "0").replace(/\s+/g, "");
+}
+
+/** Nombres d'un texte, avec une position estimée pour chacun s'il y en a plusieurs. */
+function numbersOf(token: OcrToken): NumberToken[] {
+  const text = token.text.replace(/[Oo]/g, "0");
+  return [...text.matchAll(/\d+/g)].map((m) => {
+    const middle = (m.index! + m[0].length / 2) / text.length;
+    return { value: Number(m[0]), cx: token.x + token.w * middle, cy: token.y + token.h / 2 };
+  });
+}
