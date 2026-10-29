@@ -23,6 +23,7 @@ import {
   type EngineState,
 } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
+import { ageUpBuilders } from "./top";
 import {
   addBuild,
   filterBuilds,
@@ -300,12 +301,31 @@ async function startVision(keepError = false) {
 let topText = "";
 /** Applis avec des fenêtres quand GeForce Now n'a pas été trouvé (pour comprendre pourquoi). */
 let visionApps: string[] = [];
+/** Un landmark en construction était visible à la lecture précédente du haut de l'écran. */
+let ageUpSeen = false;
+/** Ce landmark a déjà fait avancer le BO. */
+let ageUpHandled = false;
 /** Relances automatiques de la lecture de l'écran depuis la dernière lecture réussie. */
 let visionRestarts = 0;
 
 function onVision(event: VisionEvent) {
   if (event.type === "top") {
     topText = event.tokens.map((t) => t.text).join(" ");
+    const builders = ageUpBuilders(event.tokens);
+    // Deux lectures de suite (chiffre parasite), et une seule fois par landmark : il reste
+    // affiché toute la construction, il ne faut pas sauter jusqu'au passage d'âge suivant.
+    if (builders !== null && ageUpSeen && !ageUpHandled && engine) {
+      ageUpHandled = true;
+      engine.ageUpStarted();
+      if (engine.index !== state.step) {
+        state.step = engine.index;
+        state.engine = engine.state();
+        saveSession();
+        if (state.view === "play") render();
+      }
+    }
+    ageUpSeen = builders !== null;
+    if (builders === null) ageUpHandled = false;
     return;
   }
   if (event.type === "hud") {

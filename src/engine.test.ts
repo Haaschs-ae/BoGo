@@ -222,6 +222,31 @@ describe("BuildEngine", () => {
     expect(feed(engine, reading({ food: 6, wood: 3 }), 4000).index).toBe(1);
   });
 
+  it("reste sur l'étape tant que la répartition n'est pas faite (trop à la nourriture, pas assez à l'or) : vu en partie", () => {
+    const engine = new BuildEngine(steps, "English");
+    engine.setStep(1);
+    // Étape 2 : 6 nourriture + 3 bois = 9. Un 10e villageois, mais 9 à la nourriture et 1 au bois.
+    let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 4);
+    expect(state.villagers).toBe(10);
+    expect(state.index).toBe(1);
+    expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 3 });
+    // Le joueur corrige : on avance.
+    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 4000);
+    expect(state.index).toBe(2);
+    // Décroché du BO (3 villageois de plus sans suivre la répartition) : on avance quand même.
+    const lost = new BuildEngine(steps, "English");
+    lost.setStep(1);
+    expect(feed(lost, reading({ food: 12 }), 0).index).toBe(2);
+  });
+
+  it("ne signale pas les villageois qui attendent de construire (bâtisseurs prévus) : vu en partie", () => {
+    const withBuilders = [step(21, { food: 6, wood: 0, gold: 7, builder: 8 })];
+    const engine = new BuildEngine(withBuilders, "English");
+    expect(feed(engine, reading({ food: 7, wood: 4 }), 0, 5).misplacement).toBeNull();
+    // Au-delà des bâtisseurs prévus, l'alerte revient.
+    expect(feed(engine, reading({ food: 9, wood: 8 }), 5000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3 });
+  });
+
   it("signale un villageois en trop sur une ressource s'il y reste", () => {
     const engine = new BuildEngine(steps, "English");
     // Étape 2 : 6 nourriture, 3 bois. Le 8e part aux moutons au lieu du bois.

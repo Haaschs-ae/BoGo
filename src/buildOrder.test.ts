@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imageLabel, parseBuildOrder, parseTime, tokenizeNote } from "./buildOrder";
+import { decodeEntities, imageLabel, parseBuildOrder, parseTime, tokenizeNote } from "./buildOrder";
 
 const step = {
   population_count: -1,
@@ -66,4 +66,12 @@ describe("tokenizeNote", () => {
 
 it("imageLabel donne un nom lisible", () => {
   expect(imageLabel("building_economy/mining_camp.webp")).toBe("mining camp");
+});
+
+it("décode les caractères encodés par aoe4guides (vu en partie : « 5 -&gt; »)", () => {
+  expect(decodeEntities("5 -&gt; pierre &amp; or, &#39;ok&#39;")).toBe("5 -> pierre & or, 'ok'");
+  expect(tokenizeNote("5 -&gt; @resource/stone.webp@")).toEqual([
+    { kind: "text", text: "5 -> " },
+    { kind: "image", path: "resource/stone.webp" },
+  ]);
 });

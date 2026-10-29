@@ -122,6 +122,10 @@ const SPEND_RATIO = 0.75;
 const TC_SPEND_RATIO = 0.6;
 /** Si le clic n'a pas été vu, on avance quand même après ce nombre de villageois en plus. */
 const FALLBACK_EXTRA_VILLAGERS = 4;
+/** Répartition pas encore atteinte : on avance quand même après ce nombre de villageois en plus. */
+const UNBALANCED_EXTRA_VILLAGERS = 3;
+/** Villageois manquants tolérés sur la répartition (en chemin, lecture) en plus des bâtisseurs. */
+const DISTRIBUTION_TOLERANCE = 1;
 
 export class BuildEngine {
   index = 0;
@@ -217,7 +221,16 @@ export class BuildEngine {
       const target = this.targets[this.index];
       const needed = goal.kind === "villagers" ? target : target + FALLBACK_EXTRA_VILLAGERS;
       if (v <= needed) break;
-      reason ||= goal.kind === "villagers" ? `${v} villageois > ${target}` : `${v} villageois, clic non vu`;
+      // Répartition de l'étape pas encore faite (trop à la nourriture, pas assez à l'or…) :
+      // on reste sur l'étape, l'alerte dit quoi corriger, sauf si le joueur a décroché du BO.
+      const balanced = this.distributionReached(this.index);
+      if (goal.kind === "villagers" && !balanced && v < target + UNBALANCED_EXTRA_VILLAGERS) break;
+      reason ||=
+        goal.kind !== "villagers"
+          ? `${v} villageois, clic non vu`
+          : balanced
+            ? `${v} villageois > ${target}`
+            : `${v} villageois, répartition pas suivie`;
       this.index++;
     }
     if (this.index !== start) {
@@ -225,6 +238,30 @@ export class BuildEngine {
       this.index = start;
       this.record(end, reason);
       this.index = end;
+    }
+  }
+
+  /** Les villageois sont répartis comme l'étape le demande, à quelques villageois près. */
+  private distributionReached(index: number): boolean {
+    const gatherers = this.last?.gatherers;
+    if (!gatherers) return true;
+    const target = this.steps[index].resources;
+    const missing = RESOURCES.reduce((sum, r) => sum + Math.max(0, target[r] - gatherers[r]), 0);
+    return missing <= DISTRIBUTION_TOLERANCE + Math.max(0, target.builder ?? 0);
+  }
+
+  /**
+   * Le haut de l'écran montre un landmark en construction (passage d'âge lancé) : si une
+   * étape de passage d'âge est en cours ou toute proche, on passe à la suivante.
+   */
+  ageUpStarted() {
+    for (let i = this.index; i < Math.min(this.index + 3, this.steps.length); i++) {
+      if (stepGoal(this.steps, i).kind !== "age") continue;
+      const to = Math.min(i + 1, this.steps.length - 1);
+      if (to !== this.index) this.record(to, "passage d'âge en cours (vu en haut de l'écran)");
+      this.index = to;
+      this.floor = 0;
+      return;
     }
   }
 
@@ -262,13 +299,18 @@ export class BuildEngine {
     const reading = this.last;
     if (!reading) return null;
     const target = this.steps[this.index].resources;
-    const excess = RESOURCES.filter((r) => target[r] >= 0 && reading.gatherers[r] > target[r]);
-    if (excess.length === 0) {
+    const over = (r: Resource) => reading.gatherers[r] - target[r];
+    const excess = RESOURCES.filter((r) => target[r] >= 0 && over(r) > 0);
+    // Les bâtisseurs prévus par le BO récoltent en attendant de construire : autant de
+    // villageois en trop ne sont pas une erreur.
+    const builders = Math.max(0, target.builder ?? 0);
+    const totalExcess = excess.reduce((sum, r) => sum + over(r), 0);
+    if (excess.length === 0 || totalExcess <= builders) {
       this.misplacedSince = null;
       return null;
     }
-    const from = excess.sort((a, b) => reading.gatherers[b] - target[b] - (reading.gatherers[a] - target[a]))[0];
-    const count = reading.gatherers[from] - target[from];
+    const from = excess.sort((a, b) => over(b) - over(a))[0];
+    const count = Math.min(over(from), totalExcess - builders);
     const to =
       RESOURCES.filter((r) => target[r] >= 0 && reading.gatherers[r] < target[r]).sort(
         (a, b) => target[b] - reading.gatherers[b] - (target[a] - reading.gatherers[a]),

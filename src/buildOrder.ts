@@ -90,10 +90,23 @@ export function parseTime(time: string): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+/** aoe4guides encode certains caractères : "5 -&gt;" → "5 ->". */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(#\d+|#x[\da-f]+|[a-z]+);/gi, (match, code: string) => {
+    if (code[0] === "#") {
+      const n = code[1].toLowerCase() === "x" ? parseInt(code.slice(2), 16) : Number(code.slice(1));
+      return Number.isFinite(n) ? String.fromCodePoint(n) : match;
+    }
+    return ENTITIES[code.toLowerCase()] ?? match;
+  });
+}
+
 /** Découpe une note en texte et images : "6 @resource/sheep.webp@" → texte, image. */
 export function tokenizeNote(note: string): NotePart[] {
   const parts: NotePart[] = [];
-  note.split("@").forEach((chunk, i) => {
+  decodeEntities(note).split("@").forEach((chunk, i) => {
     if (i % 2 === 1 && IMAGE_PATH.test(chunk)) parts.push({ kind: "image", path: chunk });
     else if (chunk) {
       // Un "@" isolé n'entoure pas d'image : on le garde dans le texte.
