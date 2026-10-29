@@ -64,10 +64,25 @@ describe("parseHud", () => {
     expect(parseHud(withLetterO)?.stock.wood).toBe(200);
   });
 
+  it("ne double pas les inactifs déjà comptés sur une ressource (capture réelle à 6:21)", () => {
+    const tokens = [
+      token("13/20", 42, 858, 90, 878),
+      token("9", 146, 858, 157, 878),
+      token("900", 42, 916, 72, 936),
+      token("6", 146, 916, 157, 936),
+      token("310", 42, 955, 72, 975),
+      token("3", 146, 955, 157, 975),
+      token("100", 42, 994, 72, 1014),
+      token("0", 42, 1033, 52, 1053),
+    ];
+    expect(parseHud(tokens)).toMatchObject({ idle: 9, villagers: 9, gatherers: { food: 6, wood: 3, gold: 0, stone: 0 } });
+  });
+
   it("refuse une lecture incomplète ou incohérente", () => {
     expect(parseHud(startOfGame.filter((t) => t.text !== "7/10"))).toBeNull();
     expect(parseHud(startOfGame.filter((t) => t.text !== "100"))).toBeNull();
     const tooMany = startOfGame.map((t) => (t.text === "6" ? { ...t, text: "60" } : t));
+    // 60 villageois pour 7 de population : chiffre mal lu.
     expect(parseHud(tooMany)).toBeNull();
   });
 });

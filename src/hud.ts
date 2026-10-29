@@ -75,9 +75,12 @@ export function parseHud(tokens: OcrToken[]): HudReading | null {
   }
 
   const idle = idleToken?.value ?? 0;
-  const villagers = RESOURCES.reduce((sum, r) => sum + gatherers[r], idle);
+  const working = RESOURCES.reduce((sum, r) => sum + gatherers[r], 0);
   const population = Number(current);
-  // Plus de villageois que de population : lecture fausse.
+  // Le jeu peut compter un villageois inactif aussi sur sa dernière ressource : si le total
+  // dépasse la population, les inactifs recoupent les compteurs par ressource.
+  const villagers = working + idle <= population ? working + idle : Math.max(working, idle);
+  // Même ainsi plus de villageois que de population : lecture fausse.
   if (villagers > population) return null;
   return { population, populationMax: Number(max), idle, stock, gatherers, villagers };
 }
