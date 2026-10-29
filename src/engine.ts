@@ -17,7 +17,7 @@ export type StepGoal = { kind: "villagers" } | { kind: "age"; age: number } | { 
 
 export const AGE_NAMES: Record<number, string> = { 2: "II · Féodal", 3: "III · Château", 4: "IV · Impérial" };
 
-type Cost = Partial<Resources>;
+export type Cost = Partial<Resources>;
 // Coûts par civ, extraits des données d'AoE4World (scripts/extract_costs.py).
 const COSTS = costs as Record<string, { townCenter: Cost | null; ages: Record<string, Cost[]> }>;
 const DEFAULT_COSTS = COSTS.english;
@@ -75,6 +75,8 @@ function ageTransitionAt(steps: BuildOrderStep[], index: number): number | null 
     const here = ageOf(index);
     if (here && here > before(index - 1) && mentions(index) && !mentions(index - 1)) return here;
   }
+  // Dernière étape qui parle du passage d'âge, sans étape après : le BO finit sur ce passage.
+  if (index === steps.length - 1 && mentions(index) && before(index) < 4) return before(index) + 1;
   return null;
 }
 
@@ -114,6 +116,9 @@ export interface EngineState {
   /** Villageois en plus de la cible alors que la répartition de l'étape n'est pas faite
    *  (attaque, choix du joueur) : BoGo reste sur l'étape, l'interface propose ⌘⌥→. */
   drift: number;
+  /** L'objectif de la dernière étape est atteint (passage d'âge ou TC payé, landmark en
+   *  construction, ou villageois et répartition tenus) : le BO est terminé. */
+  completed: boolean;
 }
 
 const CONFIRM_READINGS = 2;
@@ -129,6 +134,8 @@ const TC_SPEND_RATIO = 0.6;
  * passage d'âge ou un TC (il faut voir la dépense, le landmark en construction, ou ⌘⌥→).
  */
 const MIN_STEP_SECONDS = 5;
+/** La dernière étape « villageois » reste affichée au moins ce temps avant la fin du BO. */
+const LAST_STEP_SECONDS = 10;
 
 export class BuildEngine {
   index = 0;
@@ -148,6 +155,7 @@ export class BuildEngine {
   private last: HudReading | null = null;
   /** Heure d'arrivée sur l'étape (posée à la lecture suivante après un changement). */
   private enteredAt: number | null = null;
+  private completed = false;
 
   constructor(
     private readonly steps: BuildOrderStep[],
@@ -162,6 +170,8 @@ export class BuildEngine {
     if (target !== this.index) this.record(target, reason);
     this.moveTo(target);
     this.floor = this.villagers ?? 0;
+    // Retour en arrière au clavier : le BO n'est plus terminé.
+    if (target < this.steps.length - 1) this.completed = false;
   }
 
   private moveTo(index: number) {
@@ -181,6 +191,7 @@ export class BuildEngine {
 
     this.applySpending(now);
     this.advanceOnVillagers(now);
+    this.checkLastStep(now);
     return this.state(now);
   }
 
@@ -198,6 +209,7 @@ export class BuildEngine {
       villagers: this.villagers,
       misplacement: this.checkMisplacement(now),
       drift: this.drift(goal),
+      completed: this.completed,
     };
   }
 
@@ -237,6 +249,17 @@ export class BuildEngine {
     this.enteredAt = now;
   }
 
+  /** Dernière étape « villageois » : finie quand sa cible et sa répartition tiennent, après un temps minimum. */
+  private checkLastStep(now: number) {
+    const last = this.steps.length - 1;
+    if (this.completed || this.index !== last || this.villagers === null) return;
+    if (stepGoal(this.steps, last).kind !== "villagers") return;
+    if (now - (this.enteredAt ?? now) < LAST_STEP_SECONDS * 1000) return;
+    if (this.villagers < this.targets[last] || !this.distributionReached(last)) return;
+    this.completed = true;
+    this.record(last, "dernière étape faite, fin du BO");
+  }
+
   private drift(goal: StepGoal): number {
     if (this.villagers === null || goal.kind !== "villagers") return 0;
     const extra = this.villagers - this.targets[this.index];
@@ -256,8 +279,12 @@ export class BuildEngine {
   ageUpStarted() {
     for (let i = this.index; i < Math.min(this.index + 3, this.steps.length); i++) {
       if (stepGoal(this.steps, i).kind !== "age") continue;
-      const to = Math.min(i + 1, this.steps.length - 1);
-      if (to !== this.index) this.record(to, "passage d'âge en cours (vu en haut de l'écran)");
+      const last = this.steps.length - 1;
+      const to = Math.min(i + 1, last);
+      if (i === last) {
+        this.completed = true;
+        this.record(last, "passage d'âge en cours (vu en haut de l'écran), fin du BO");
+      } else if (to !== this.index) this.record(to, "passage d'âge en cours (vu en haut de l'écran)");
       this.moveTo(to);
       this.floor = 0;
       return;
@@ -283,8 +310,10 @@ export class BuildEngine {
       // TC : toutes les ressources de son coût, avec un seuil plus bas (technologies qui le réduisent).
       const done = options.some((cost) => paid(cost, goal.kind === "tc" ? TC_SPEND_RATIO : SPEND_RATIO));
       if (done) {
-        const to = Math.min(i + 1, this.steps.length - 1);
-        this.record(to, goal.kind === "tc" ? "TC payé" : "passage d'âge payé");
+        const last = this.steps.length - 1;
+        const to = Math.min(i + 1, last);
+        if (i === last) this.completed = true;
+        this.record(to, `${goal.kind === "tc" ? "TC payé" : "passage d'âge payé"}${i === last ? ", fin du BO" : ""}`);
         this.moveTo(to);
         this.floor = 0;
         this.history = [];

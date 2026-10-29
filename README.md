@@ -22,7 +22,8 @@ L'appli est faite avec [Tauri](https://tauri.app) et pourra aussi tourner sous W
    xattr -cr /Applications/BoGo.app
    ```
 
-BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕ la ferme.
+BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. En partie, ✕ la masque (⌘⌥B pour la
+réafficher) ; depuis la bibliothèque, ✕ puis « Quitter ? » ferme BoGo.
 
 ## Utilisation
 
@@ -55,6 +56,17 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
   La fenêtre prend la hauteur de son contenu.
 - **Adversaires** : en 1v1, BoGo montre la civ adverse. À plusieurs, il n'affiche rien sur
   les adversaires.
+- **En partie, les clics passent au jeu** : BoGo se verrouille au lancement d'un BO (cadenas
+  « 🔒 ⌘⌥L » en haut à droite) et se déverrouille pour choisir un BO ou ouvrir les réglages.
+- **État de la lecture**, toujours visible en haut à droite : ● horloge verte = lecture OK ;
+  ■ « Lecture coupée » = plus rien n'est lu (les chiffres disparaissent, bandeau « avance avec
+  ⌘⌥→ ») ; ◆ « Lecture arrêtée » = voir ⚙. BoGo n'affiche jamais de chiffres périmés.
+- **Fin du BO** : sur l'objectif de la dernière étape (passage d'âge ou TC payé, landmark en
+  construction, ou villageois et répartition tenus 10 s), jamais sur le seul nombre de villageois.
+  Une nouvelle partie rouvre toujours le choix du BO.
+- **Enregistrer mes parties** (⚙, désactivé par défaut) : un fichier local par BO lancé, avec les
+  lectures de l'écran, pour rejouer une partie et régler BoGo sans repasser par GeForce Now.
+  Rien n'est envoyé ; la liste des applis n'y figure pas.
 - **Mode réduit** : quand le BO est terminé, BoGo se réduit à une pastille (« ✓ BO
   terminé », horloge, inactifs). ⌘⌥M ou ▾ / ▴ pour réduire ou agrandir à tout moment.
 - **Suivi automatique** : BoGo lit l'écran de GeForce Now une fois par seconde (macOS 14

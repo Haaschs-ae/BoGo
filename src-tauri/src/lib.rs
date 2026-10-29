@@ -1,4 +1,5 @@
-use std::io::{BufRead, BufReader};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -100,6 +101,68 @@ async fn open_aoe4guides(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Enregistrement de la partie en cours : les lignes lues à l'écran et les repères de BoGo
+/// (BO lancé, étape changée au clavier, fin), pour rejouer une partie hors ligne.
+/// Fichier local, jamais envoyé.
+#[derive(Default)]
+struct Recorder(Mutex<Option<File>>);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Ajoute une ligne horodatée à l'enregistrement, s'il y en a un en cours.
+fn record(app: &AppHandle, mut event: serde_json::Value) {
+    // La liste des applis ouvertes (fenêtre GeForce Now introuvable) n'a rien à faire dans un
+    // fichier qu'on peut être amené à partager.
+    if let Some(fields) = event.as_object_mut() {
+        fields.remove("apps");
+    }
+    let recorder = app.state::<Recorder>();
+    let Ok(mut guard) = recorder.0.lock() else {
+        return;
+    };
+    if let Some(file) = guard.as_mut() {
+        let line = serde_json::json!({ "t": now_ms(), "event": event });
+        let _ = writeln!(file, "{line}");
+    }
+}
+
+/// Démarre un nouveau fichier d'enregistrement (`enabled`) ou arrête l'enregistrement.
+/// Renvoie le chemin du fichier créé.
+#[tauri::command]
+fn set_recording(app: AppHandle, enabled: bool) -> Result<Option<String>, String> {
+    let recorder = app.state::<Recorder>();
+    let mut current = recorder.0.lock().map_err(|e| e.to_string())?;
+    *current = None;
+    if !enabled {
+        return Ok(None);
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("parties");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("dossier {} impossible à créer ({e})", dir.display()))?;
+    let path = dir.join(format!("partie-{}.jsonl", now_ms() / 1000));
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("fichier {} impossible à créer ({e})", path.display()))?;
+    *current = Some(file);
+    Ok(Some(path.display().to_string()))
+}
+
+/// Repère ajouté par l'interface (BO lancé, étape changée au clavier, fin du BO).
+#[tauri::command]
+fn record_event(app: AppHandle, event: serde_json::Value) {
+    record(&app, event);
+}
+
 /// Processus bogo-vision en cours (lecture de l'horloge à l'écran).
 #[derive(Default)]
 struct Vision(Mutex<Option<Child>>);
@@ -141,6 +204,7 @@ fn start_vision(app: AppHandle, vision: State<Vision>) -> Result<(), String> {
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) {
+                record(&app, event.clone());
                 let _ = app.emit("vision", event);
             }
         }
@@ -153,7 +217,9 @@ fn start_vision(app: AppHandle, vision: State<Vision>) -> Result<(), String> {
             .map(|s| s.to_string())
             .unwrap_or_default();
         let detail = errors.join().unwrap_or_default();
-        let _ = app.emit("vision", serde_json::json!({ "type": "stopped", "status": status, "detail": detail }));
+        let stopped = serde_json::json!({ "type": "stopped", "status": status, "detail": detail });
+        record(&app, stopped.clone());
+        let _ = app.emit("vision", stopped);
     });
     *running = Some(child);
     Ok(())
@@ -196,6 +262,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(Vision::default())
+        .manage(Recorder::default())
         .invoke_handler(tauri::generate_handler![
             fetch_aoe4guides_build,
             fetch_last_game,
@@ -203,6 +270,8 @@ pub fn run() {
             keep_overlay_on_top,
             start_vision,
             stop_vision,
+            set_recording,
+            record_event,
             quit
         ])
         .setup(|_app| {

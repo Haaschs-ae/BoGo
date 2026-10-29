@@ -805,3 +805,91 @@ button.wide {
   font-size: 12px;
   margin-bottom: 6px;
 }
+
+/* ---------- État de la lecture de l'écran (en-tête de partie) ---------- */
+
+.reading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reading .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.reading.ok {
+  color: var(--ok);
+}
+
+.reading.ok .dot {
+  background: var(--ok);
+}
+
+.reading.warn {
+  color: #ffd98a;
+}
+
+.reading.warn .dot {
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.reading.bad {
+  color: var(--danger);
+}
+
+.reading.bad .dot {
+  background: var(--danger);
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+
+.reading.wait,
+.reading.manual {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reading.wait .dot {
+  background: var(--muted);
+}
+
+.reading.manual .dot {
+  display: none;
+}
+
+/* Verrouillé : les boutons disparaissent, un petit cadenas rappelle comment cliquer. */
+.head-row {
+  position: relative;
+}
+
+.lock-hint {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+body.locked .lock-hint {
+  display: inline;
+}
+
+/* « Quitter ? » : second clic pour confirmer. */
+button.confirm {
+  color: var(--danger);
+  border-color: var(--danger);
+}

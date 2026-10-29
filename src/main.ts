@@ -15,7 +15,16 @@ import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
 import { heroModel, iconLabel, isWellKnownIcon, stepLandmark } from "./display";
-import { AGE_NAMES, BuildEngine, effectiveVillagerTargets, type EngineState } from "./engine";
+import {
+  AGE_NAMES,
+  BuildEngine,
+  effectiveVillagerTargets,
+  goalCosts,
+  stepGoal,
+  type Cost,
+  type EngineState,
+  type StepGoal,
+} from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { ageUpBuilders } from "./top";
 import { looksEnglish, translateText } from "./translate";
@@ -59,6 +68,8 @@ interface Settings {
   iconNames: boolean;
   /** Montrer l'étape suivante (« Ensuite ») sous l'étape en cours ; caché par défaut. */
   showNext: boolean;
+  /** Enregistrer les lectures de l'écran de chaque partie dans un fichier local, pour la rejouer. */
+  record: boolean;
 }
 
 type VisionEvent =
@@ -101,6 +112,8 @@ interface State {
   mini: boolean;
   /** Le BO en cours est arrivé au bout. */
   finished: boolean;
+  /** Fichier où la partie est enregistrée (réglage « Enregistrer mes parties »), ou l'erreur. */
+  recording: { path: string | null; error: string | null };
 }
 
 const state: State = {
@@ -122,6 +135,7 @@ const state: State = {
   engine: null,
   mini: false,
   finished: false,
+  recording: { path: null, error: null },
 };
 const clock = new ClockTracker();
 /** Moteur du BO en cours, recréé à chaque lancement d'un BO. */
@@ -149,6 +163,12 @@ function goToStep(step: number) {
   if (step > build.build.build_order.length - 1) return finishBuild();
   state.step = Math.max(0, Math.min(step, build.build.build_order.length - 1));
   engine?.setStep(state.step);
+  // Revenir avant la fin rouvre le BO (pastille « terminé » retirée).
+  if (state.finished && state.step < build.build.build_order.length - 1) {
+    state.finished = false;
+    state.mini = false;
+  }
+  recordEvent({ type: "step", step: state.step, reason: "clavier" });
   saveSession();
   render();
 }
@@ -159,9 +179,8 @@ function resetEngine() {
     engine = null;
     return;
   }
-  // La civ jouée sert au coût du passage d'âge (les Mongols paient en pierre).
-  const civ = state.game?.ongoing ? state.game.myCivilization : civilizationsOf(saved.build)[0];
-  engine = new BuildEngine(saved.build.build_order, civ);
+  // La civ jouée sert au coût du passage d'âge et du TC.
+  engine = new BuildEngine(saved.build.build_order, playedCivilization(saved));
   engine.setStep(state.step, "reprise du BO");
   state.engine = null;
 }
@@ -176,6 +195,7 @@ function finishBuild() {
   if (state.finished) return;
   state.finished = true;
   state.mini = true;
+  recordEvent({ type: "finished", step: state.step });
   render();
 }
 
@@ -193,13 +213,32 @@ function play(id: string) {
   state.view = "play";
   resetEngine();
   saveSession();
-  render();
+  // En partie, les clics passent au jeu ; ⌘⌥L pour cliquer dans BoGo.
+  setLocked(true);
+  const saved = current();
+  if (state.settings.record && saved) {
+    startRecording().then(() => recordEvent({ type: "bo", id: saved.id, build: saved.build }));
+  }
+}
+
+/** Nouveau fichier d'enregistrement (un par BO lancé) ; ne fait jamais échouer le lancement. */
+async function startRecording() {
+  try {
+    state.recording = { path: await invoke<string | null>("set_recording", { enabled: true }), error: null };
+  } catch (err) {
+    state.recording = { path: null, error: errorText(err) };
+  }
+}
+
+/** Repère dans l'enregistrement en cours (BO lancé, étape au clavier, fin) ; sans enregistrement, rien. */
+function recordEvent(event: Record<string, unknown>) {
+  if (state.settings.record) invoke("record_event", { event }).catch(() => {});
 }
 
 async function setLocked(locked: boolean) {
   state.locked = locked;
-  await appWindow.setIgnoreCursorEvents(locked);
   render();
+  await appWindow.setIgnoreCursorEvents(locked).catch(() => {});
 }
 
 async function registerHotkeys() {
@@ -279,8 +318,11 @@ async function pollGame() {
       state.civ = game.myCivilization;
       state.style = "";
       state.view = "civ";
+      state.mini = false;
+      state.finished = false;
       saveSession();
-      render();
+      if (state.locked) setLocked(false);
+      else render();
       return;
     }
   } catch (err) {
@@ -328,6 +370,10 @@ function onVision(event: VisionEvent) {
     if (builders !== null && ageUpSeen && !ageUpHandled && engine) {
       ageUpHandled = true;
       engine.ageUpStarted();
+      if (!state.finished && engine.state().completed) {
+        finishBuild();
+        return;
+      }
       if (engine.index !== state.step) {
         state.step = engine.index;
         state.engine = engine.state();
@@ -351,10 +397,8 @@ function onVision(event: VisionEvent) {
         state.step = state.engine.index;
         saveSession();
       }
-      // Dernière étape atteinte avec ses villageois : BO terminé.
-      const steps = current()?.build.build_order ?? [];
-      const last = steps.length - 1;
-      if (!state.finished && state.step === last && (state.engine.villagers ?? 0) >= effectiveVillagerTargets(steps)[last]) {
+      // Objectif de la dernière étape atteint (âge ou TC payé, ou villageois tenus 10 s).
+      if (!state.finished && state.engine.completed) {
         finishBuild();
         return;
       }
@@ -412,9 +456,10 @@ function loadSettings(): Settings {
       translate: s.translate !== false,
       iconNames: s.iconNames !== false,
       showNext: s.showNext === true,
+      record: s.record === true,
     };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false };
   }
 }
 
@@ -423,6 +468,10 @@ function saveSettings(settings: Settings) {
   const previous = state.settings;
   state.settings = settings;
   store(SETTINGS_KEY, settings);
+  if (!settings.record && previous.record) {
+    invoke("set_recording", { enabled: false }).catch(() => {});
+    state.recording = { path: null, error: null };
+  }
   // Autre profil : sa partie en cours n'a pas encore été proposée.
   if (settings.profileId !== previous.profileId) state.handledGameId = null;
   pollGame();
@@ -500,6 +549,22 @@ function fitWindow() {
   });
 }
 
+/** Quitter demande un second clic dans les 3 s : ✕ est petit et proche des autres boutons. */
+function quitButton(): HTMLElement {
+  const quit = button("✕", "Quitter BoGo", () => {
+    if (quit.dataset.confirm) return invoke("quit");
+    quit.dataset.confirm = "1";
+    quit.textContent = "Quitter ?";
+    quit.classList.add("confirm");
+    setTimeout(() => {
+      delete quit.dataset.confirm;
+      quit.textContent = "✕";
+      quit.classList.remove("confirm");
+    }, 3000);
+  });
+  return quit;
+}
+
 function header(): HTMLElement {
   const bar = h("header", "bar");
   bar.dataset.tauriDragRegion = "";
@@ -508,9 +573,9 @@ function header(): HTMLElement {
   const actions = h("div", "actions");
   if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
   actions.append(
-    button("⚙", "Réglages", () => (state.view === "settings" ? showLibrary() : ((state.view = "settings"), render()))),
+    button("⚙", "Réglages", () => (state.view === "settings" ? showLibrary() : showSettings())),
     button(state.locked ? "🔒" : "🔓", "Verrouiller (clics transmis au jeu)", () => setLocked(!state.locked)),
-    button("✕", "Quitter BoGo", () => invoke("quit")),
+    quitButton(),
   );
   bar.append(title, actions);
   return bar;
@@ -536,10 +601,10 @@ function playHeader(saved: SavedBuild): HTMLElement {
     "div",
     "actions",
     button("📚", "Bibliothèque", () => showLibrary()),
-    button("⚙", "Réglages", () => ((state.view = "settings"), render())),
+    button("⚙", "Réglages", () => showSettings()),
     button("▾", "Réduire (⌘⌥M)", () => toggleMini()),
     button(state.locked ? "🔒" : "🔓", "Verrouiller : les clics passent au jeu (⌘⌥L)", () => setLocked(!state.locked)),
-    button("✕", "Quitter BoGo", () => invoke("quit")),
+    button("✕", "Masquer BoGo (⌘⌥B pour le réafficher)", () => appWindow.hide()),
   );
 
   const step = steps[state.step];
@@ -551,11 +616,46 @@ function playHeader(saved: SavedBuild): HTMLElement {
     button("▶", "Étape suivante (⌘⌥→)", () => goToStep(state.step + 1)),
   );
   if (age) where.append(h("span", "muted", " · "), gameIcon(`age/age_${age}.webp`, ""), h("span", "", ` Âge ${ROMAN[age]}`));
-  const gameTime = clock.current(Date.now());
-  const right = gameTime !== null ? h("span", "clock", `⏱ ${formatClock(gameTime)}`) : h("span", "bo-name", saved.build.name);
-  head.append(h("div", "head-row", progress, actions), h("div", "meta", where, right));
+  const reading = readingState();
+  shownReading = reading;
+  head.append(
+    h("div", "head-row", progress, actions, h("span", "lock-hint", "🔒 ⌘⌥L")),
+    h("div", "meta", where, readingBadge(reading, saved.build.name)),
+  );
   return head;
 }
+
+type ReadingState = "ok" | "clock" | "off" | "stopped" | "waiting" | "manual";
+
+/** État de la lecture de l'écran, toujours visible en partie : jamais de chiffres périmés présentés comme en direct. */
+function readingState(now = Date.now()): ReadingState {
+  if (!state.settings.readScreen) return "manual";
+  if (state.vision.error) return "stopped";
+  if (hudIsFresh(now)) return "ok";
+  if (clock.current(now) !== null) return "clock";
+  return state.hud ? "off" : "waiting";
+}
+
+/** Forme + texte (pas seulement la couleur) : rond = lu, carré = coupé, losange = arrêté. */
+function readingBadge(reading: ReadingState, boName: string): HTMLElement {
+  const gameTime = clock.current(Date.now());
+  const time = gameTime !== null ? `⏱ ${formatClock(gameTime)}` : "";
+  const badges: Record<ReadingState, [string, string, string]> = {
+    ok: ["ok", time, "Lecture de l'écran OK"],
+    clock: ["warn", time, "Horloge lue, mais panneau des villageois illisible : BoGo suit l'horloge du BO"],
+    off: ["warn", "Lecture coupée", "Plus rien n'est lu à l'écran : avance avec ⌘⌥→"],
+    stopped: ["bad", "Lecture arrêtée", state.vision.error ?? ""],
+    waiting: ["wait", boName, "En attente de la première lecture de l'écran"],
+    manual: ["manual", boName, "Suivi manuel : ⌘⌥→ étape suivante"],
+  };
+  const [kind, text, title] = badges[reading];
+  const badge = h("span", `reading ${kind}`, h("i", "dot"), text);
+  badge.title = title;
+  return badge;
+}
+
+/** État de lecture affiché au dernier rendu de la vue de jeu (voir le minuteur en fin de fichier). */
+let shownReading: ReadingState | "" = "";
 
 const ROMAN: Record<number, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
 /** Villageois en plus (répartition pas suivie) à partir desquels on propose de passer l'étape. */
@@ -574,13 +674,19 @@ function playView(saved: SavedBuild): HTMLElement {
   const translate = shouldTranslate(saved);
 
   const view = h("main", "play");
+  const reading = readingState();
+  if (reading === "off") view.append(h("div", "alert warn", "Suivi auto coupé : avance avec ⌘⌥→"));
+  if (reading === "stopped") view.append(h("div", "alert", "Lecture de l'écran arrêtée : voir ⚙"));
   const alert = alertBanner(auto, hud);
   if (alert) view.append(alert);
   // Icônes déjà nommées en grand au-dessus : pas de nom répété dans les consignes.
   const named = new Set<string>();
 
-  if (auto && auto.goal.kind !== "villagers") {
-    view.append(goalBlock(auto, hud!, step, named));
+  // Passage d'âge ou TC : même sans lecture du panneau (coûts affichés comme cibles).
+  const goal = auto ? auto.goal : stepGoal(steps, state.step);
+  if (goal.kind !== "villagers") {
+    const cost = auto ? auto.cost : (goalCosts(goal, playedCivilization(saved))[0] ?? null);
+    view.append(goalBlock(goal, cost, hud?.stock ?? null, auto?.affordable ?? false, step, named));
   } else {
     const hero = heroBlock(steps, hud, named);
     if (hero) view.append(hero);
@@ -648,9 +754,16 @@ function heroBlock(steps: BuildOrderStep[], hud: HudReading | null, named: Set<s
 }
 
 /** Passage d'âge ou TC à poser : vert et « clique ! » dès qu'on a de quoi payer. */
-function goalBlock(auto: EngineState, hud: HudReading, step: BuildOrderStep, named: Set<string>): HTMLElement {
-  const isAge = auto.goal.kind === "age";
-  const age = auto.goal.kind === "age" ? auto.goal.age : 0;
+function goalBlock(
+  goal: StepGoal,
+  cost: Cost | null,
+  stock: HudReading["stock"] | null,
+  affordable: boolean,
+  step: BuildOrderStep,
+  named: Set<string>,
+): HTMLElement {
+  const isAge = goal.kind === "age";
+  const age = goal.kind === "age" ? goal.age : 0;
   const tile = h("div", "tile goal-tile", gameIcon(isAge ? `age/age_${age}.webp` : TC_ICON, isAge ? "⬆" : "🏰"));
   const text = h("div", "hero-text", h("div", "big", isAge ? `ÂGE ${ROMAN[age] ?? age}` : "NOUVEAU TC"));
   const landmark = isAge ? stepLandmark(step) : null;
@@ -663,20 +776,25 @@ function goalBlock(auto: EngineState, hud: HudReading, step: BuildOrderStep, nam
   text.append(sub);
 
   const costs = h("div", "bullets");
-  for (const [r, amount] of Object.entries(auto.cost ?? {}) as [Resource, number][]) {
-    costs.append(bulletRow(r, hud.stock[r], amount, { cost: true }));
+  for (const [r, amount] of Object.entries(cost ?? {}) as [Resource, number][]) {
+    costs.append(bulletRow(r, stock ? stock[r] : null, amount, { cost: true }));
   }
   const block = h(
     "div",
-    auto.affordable ? "primary ready" : "primary",
+    affordable ? "primary ready" : "primary",
     h("div", "kicker", isAge ? "PASSAGE D'ÂGE" : "NOUVEAU TC"),
     h("div", "action", tile, text),
     costs,
   );
   block.append(
-    auto.affordable ? h("div", "cta", "C'est le moment : clique !") : h("div", "sub", "Garde les ressources pour ça"),
+    affordable ? h("div", "cta", "C'est le moment : clique !") : h("div", "sub", "Garde les ressources pour ça"),
   );
   return block;
+}
+
+/** Civ jouée (partie détectée), sinon celle du BO : elle fixe le coût des passages d'âge et du TC. */
+function playedCivilization(saved: SavedBuild): string {
+  return state.game?.ongoing ? state.game.myCivilization : civilizationsOf(saved.build)[0];
 }
 
 /** Barres réel / cible : villageois, puis chaque ressource utile à l'étape. */
@@ -831,7 +949,14 @@ function showLibrary(civ = state.civ) {
   state.civ = civ;
   state.view = civ ? "civ" : "civs";
   saveSession();
-  render();
+  if (state.locked) setLocked(false);
+  else render();
+}
+
+function showSettings() {
+  state.view = "settings";
+  if (state.locked) setLocked(false);
+  else render();
 }
 
 function civsView(): HTMLElement {
@@ -932,6 +1057,17 @@ function stepLog(): HTMLElement {
   return log;
 }
 
+/** Où va l'enregistrement : un fichier local par BO lancé, jamais envoyé. */
+function recordingStatus(): HTMLElement {
+  const { path, error } = state.recording;
+  if (error) return h("p", "status error", `Enregistrement impossible : ${error}`);
+  if (!state.settings.record) return h("p", "hint", "Rien n'est enregistré.");
+  const text = path
+    ? `Partie enregistrée dans ${path} (fichier local, jamais envoyé ; sans la liste de tes applis).`
+    : "Un fichier sera créé au lancement du prochain BO (fichier local, jamais envoyé).";
+  return h("p", "hint", text);
+}
+
 function visionStatus(): HTMLElement {
   const status = h("p", state.vision.error ? "status error" : "status", visionText());
   status.id = "vision-status";
@@ -1006,6 +1142,9 @@ function settingsView(): HTMLElement {
   const showNext = document.createElement("input");
   showNext.type = "checkbox";
   showNext.checked = state.settings.showNext;
+  const record = document.createElement("input");
+  record.type = "checkbox";
+  record.checked = state.settings.record;
   const message = h("p", "status");
 
   const save = button("Enregistrer", "Enregistrer les réglages", () => {
@@ -1022,6 +1161,7 @@ function settingsView(): HTMLElement {
       translate: translate.checked,
       iconNames: iconNames.checked,
       showNext: showNext.checked,
+      record: record.checked,
     });
     showLibrary();
   });
@@ -1041,6 +1181,8 @@ function settingsView(): HTMLElement {
     h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
     h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
     h("label", "checkbox", showNext, "Montrer aussi l'étape suivante (« Ensuite ») pendant la partie"),
+    h("label", "checkbox", record, "Enregistrer mes parties (lectures de l'écran) pour les rejouer et régler BoGo hors ligne"),
+    recordingStatus(),
     stepLog(),
     save,
     message,
@@ -1103,6 +1245,16 @@ listen<VisionEvent>("vision", (event) => onVision(event.payload)).then(() => {
 });
 // macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
 setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
+// Quand bogo-vision ne lit plus rien, aucun événement n'arrive : sans ce minuteur, la vue
+// garderait les derniers chiffres comme s'ils étaient en direct. On ne redessine qu'au changement.
+setInterval(() => {
+  if (state.view === "play" && !state.mini && readingState() !== shownReading) render();
+}, 1000);
+// Lancé au démarrage sur un BO en cours : clics vers le jeu, enregistrement repris.
+if (state.view === "play") {
+  setLocked(true);
+  if (state.settings.record) startRecording();
+}
 
 document.addEventListener("keydown", (e) => {
   if (state.view !== "play" || e.target instanceof HTMLTextAreaElement) return;

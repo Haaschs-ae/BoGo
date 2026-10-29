@@ -274,3 +274,39 @@ describe("BuildEngine", () => {
     expect(state.misplacement).toBeNull();
   });
 });
+
+describe("fin du BO (objectif de la dernière étape)", () => {
+  it("un BO qui finit sur « passe l'âge » se termine au paiement, pas sur les villageois", () => {
+    const bo = [
+      step(6, { food: 6 }, ["6 @unit_worker/villager.webp@ sur les moutons"]),
+      step(9, { food: 6, wood: 3 }, ["Age up with @landmark_english/council-hall.webp@"]),
+    ];
+    expect(stepGoal(bo, 1)).toEqual({ kind: "age", age: 2 });
+    const engine = new BuildEngine(bo, "English");
+    engine.setStep(1);
+    // Villageois et répartition atteints : pas fini, il faut payer l'âge.
+    let state = feed(engine, reading({ food: 6, wood: 3 }, { food: 450, gold: 220 }), 0, 15);
+    expect(state.completed).toBe(false);
+    // 400 nourriture et 200 or dépensés d'un coup : passage d'âge payé, fin du BO.
+    state = feed(engine, reading({ food: 6, wood: 3 }, { food: 50, gold: 20 }), 15000, 3);
+    expect(state.completed).toBe(true);
+    expect(engine.log[0]).toContain("fin du BO");
+  });
+
+  it("une dernière étape « villageois » reste affichée 10 s avant la fin", () => {
+    const bo = [step(6, { food: 6 }), step(9, { food: 6, wood: 3 })];
+    const engine = new BuildEngine(bo, "English");
+    engine.setStep(1);
+    expect(feed(engine, reading({ food: 6, wood: 3 }), 0, 5).completed).toBe(false);
+    expect(feed(engine, reading({ food: 6, wood: 3 }), 5000, 7).completed).toBe(true);
+  });
+
+  it("revenir en arrière au clavier annule la fin", () => {
+    const bo = [step(6, { food: 6 }), step(9, { food: 6, wood: 3 })];
+    const engine = new BuildEngine(bo, "English");
+    engine.setStep(1);
+    expect(feed(engine, reading({ food: 6, wood: 3 }), 0, 12).completed).toBe(true);
+    engine.setStep(0);
+    expect(engine.state().completed).toBe(false);
+  });
+});

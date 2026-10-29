@@ -32,3 +32,11 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
 - **2026-10-29 · Ordre des chantiers : P0 (légal, clé, fair-play, quatre correctifs de jeu) →
   banc de rejeu et fiabilité du moteur → structure (machine à états, deux fenêtres, icône
   système) → écran C → Windows.** Détail dans docs/audit.md.
+- **2026-10-29 · Mac et Windows : deux applis distinctes, une base commune.** BoGo pour Mac et
+  BoGo pour Windows se téléchargent séparément ; le moteur, l'interface et les données sont
+  partagés, chaque système a sa couche propre (fenêtre au-dessus du jeu, capture, OCR, raccourcis).
+  Si la divergence devient lourde, séparer davantage plutôt que de forcer une appli unique.
+- **2026-10-29 · Alertes : on garde le grand bandeau actuel** (texte + icônes, pleine largeur)
+  plutôt que l'emplacement compact en pictogrammes de la maquette v3.
+- **2026-10-29 · En partie, BoGo se verrouille (clics vers le jeu) au lancement d'un BO ; ✕ masque
+  au lieu de quitter ; quitter demande un second clic.**
