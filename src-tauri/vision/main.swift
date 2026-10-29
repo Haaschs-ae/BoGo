@@ -12,12 +12,18 @@
 //   {"type":"error","code":"permission"|"capture","message":"…"}
 // Il s'arrête de lui-même quand BoGo se ferme (la sortie standard se ferme).
 
+import AppKit
 import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 import Vision
 
 setvbuf(stdout, nil, _IOLBF, 0)
+
+// Un outil en ligne de commande doit ouvrir sa connexion au serveur de fenêtres avant
+// d'utiliser ScreenCaptureKit, sinon il plante (« CGS_REQUIRE_INIT »). Pas d'icône dans le Dock.
+NSApplication.shared.setActivationPolicy(.prohibited)
+_ = CGMainDisplayID()
 
 /// Zone lue, en fraction de la fenêtre : bande en haut au centre. Assez large pour
 /// couvrir un stream 16:9 avec bandes noires dans un écran 16:10.
