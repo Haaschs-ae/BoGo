@@ -108,17 +108,22 @@ func readClock(_ observations: [VNRecognizedTextObservation]) -> (seconds: Int, 
     return nil
 }
 
+/// Erreur envoyée une fois tant qu'elle se répète ; le statut suivant sera renvoyé.
+func emitError(_ code: String, _ message: String) {
+    guard lastStatus != "error:\(code)" else { return }
+    lastStatus = "error:\(code)"
+    emit(["type": "error", "code": code, "message": message])
+}
+
 func run() async {
+    // Demande l'autorisation une fois ; on ne s'arrête pas si elle manque : dès qu'elle est
+    // donnée, la capture suivante réussit (macOS identifie mal une appli non signée à chaque
+    // nouvelle version, l'autorisation peut arriver après le lancement).
     if !CGPreflightScreenCaptureAccess() {
         CGRequestScreenCaptureAccess()
-        emit([
-            "type": "error",
-            "code": "permission",
-            "message": "Autorise BoGo dans Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran, puis relance BoGo.",
-        ])
-        exit(2)
     }
     while true {
+        var delay: UInt64 = 1_000_000_000
         do {
             if let window = try await findGeForceNowWindow() {
                 let image = try await capture(window)
@@ -135,9 +140,18 @@ func run() async {
                 emitStatus("no_window")
             }
         } catch {
-            emit(["type": "error", "code": "capture", "message": error.localizedDescription])
+            delay = 3_000_000_000
+            if CGPreflightScreenCaptureAccess() {
+                emitError("capture", error.localizedDescription)
+            } else {
+                emitError(
+                    "permission",
+                    "Autorise BoGo dans Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran "
+                        + "(retire-le avec « − » et rajoute-le s'il y est déjà). La lecture reprendra toute seule."
+                )
+            }
         }
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        try? await Task.sleep(nanoseconds: delay)
     }
 }
 
