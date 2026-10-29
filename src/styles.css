@@ -893,3 +893,17 @@ button.confirm {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* Réglage de taille : libellé, valeur, puis le curseur sur toute la largeur. */
+label.scale {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+label.scale input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--accent);
+}

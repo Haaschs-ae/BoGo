@@ -45,3 +45,27 @@ jobs:
           name: BoGo-macos
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
+
+  # Édition Windows expérimentale (suivi manuel, sans lecture de l'écran pour l'instant) :
+  # son échec ne bloque pas la version Mac.
+  windows:
+    needs: test
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npx tauri build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BoGo-windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

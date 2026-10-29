@@ -32,10 +32,12 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
 - **2026-10-29 · Ordre des chantiers : P0 (légal, clé, fair-play, quatre correctifs de jeu) →
   banc de rejeu et fiabilité du moteur → structure (machine à états, deux fenêtres, icône
   système) → écran C → Windows.** Détail dans docs/audit.md.
-- **2026-10-29 · Mac et Windows : deux applis distinctes, une base commune.** BoGo pour Mac et
-  BoGo pour Windows se téléchargent séparément ; le moteur, l'interface et les données sont
-  partagés, chaque système a sa couche propre (fenêtre au-dessus du jeu, capture, OCR, raccourcis).
-  Si la divergence devient lourde, séparer davantage plutôt que de forcer une appli unique.
+- **2026-10-29 · Mac et Windows : une seule base de code, deux installateurs.** Un projet commun
+  (moteur, interface, données) ; ce qui diffère est isolé : `src/platform.ts` (raccourcis,
+  libellés, lecture de l'écran), `tauri.macos.conf.json` / `tauri.windows.conf.json`, le code
+  Rust propre à chaque système. Raccourcis Windows : Ctrl+Maj (pas Ctrl+Alt = AltGr en AZERTY),
+  à valider avec des testeurs Windows. L'édition Windows est expérimentale (suivi manuel) tant
+  que la lecture d'écran Windows n'existe pas.
 - **2026-10-29 · Alertes : on garde le grand bandeau actuel** (texte + icônes, pleine largeur)
   plutôt que l'emplacement compact en pictogrammes de la maquette v3.
 - **2026-10-29 · En partie, BoGo se verrouille (clics vers le jeu) au lancement d'un BO ; ✕ masque

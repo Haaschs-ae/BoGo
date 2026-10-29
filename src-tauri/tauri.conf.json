@@ -36,10 +36,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "app",
-      "dmg"
-    ],
+    "targets": "all",
+    "publisher": "Haaschs",
+    "copyright": "© 2026 Haaschs. Code sous licence MIT ; éléments d'Age of Empires IV © Microsoft (Game Content Usage Rules).",
     "category": "Game",
     "icon": [
       "icons/32x32.png",
@@ -47,13 +46,6 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "macOS": {
-      "signingIdentity": "-",
-      "minimumSystemVersion": "11.0"
-    },
-    "externalBin": [
-      "binaries/bogo-vision"
     ]
   }
 }

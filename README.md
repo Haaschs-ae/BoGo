@@ -25,6 +25,18 @@ L'appli est faite avec [Tauri](https://tauri.app) et pourra aussi tourner sous W
 BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. En partie, ✕ la masque (⌘⌥B pour la
 réafficher) ; depuis la bibliothèque, ✕ puis « Quitter ? » ferme BoGo.
 
+### Windows (expérimental)
+
+La même appli existe pour Windows, construite depuis le même code : télécharge **BoGo-windows**
+(installateur `.exe`) sur la même page GitHub Actions. Tant que BoGo n'est pas signé, Windows
+SmartScreen affiche « Windows a protégé votre ordinateur » : « Informations complémentaires »,
+puis « Exécuter quand même ». Pour l'instant, sous Windows :
+
+- **pas de lecture de l'écran** : le BO avance avec les raccourcis (suivi manuel) ;
+- raccourcis **Ctrl+Maj** au lieu de ⌘⌥ (Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…) ;
+- jeu installé (Steam, Xbox) : mets-le en **fenêtré sans bordure**, l'overlay ne peut pas
+  s'afficher par-dessus le plein écran exclusif.
+
 ## Utilisation
 
 - **Premier lancement** : colle le lien de ton profil `aoe4world.com/players/…` dans les
@@ -56,6 +68,7 @@ réafficher) ; depuis la bibliothèque, ✕ puis « Quitter ? » ferme BoGo.
   La fenêtre prend la hauteur de son contenu.
 - **Adversaires** : en 1v1, BoGo montre la civ adverse. À plusieurs, il n'affiche rien sur
   les adversaires.
+- **Taille** : un curseur dans ⚙ règle la taille de BoGo de 70 à 130 %, en direct.
 - **En partie, les clics passent au jeu** : BoGo se verrouille au lancement d'un BO (cadenas
   « 🔒 ⌘⌥L » en haut à droite) et se déverrouille pour choisir un BO ou ouvrir les réglages.
 - **État de la lecture**, toujours visible en haut à droite : ● horloge verte = lecture OK ;

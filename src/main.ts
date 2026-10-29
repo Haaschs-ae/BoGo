@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
@@ -27,6 +28,7 @@ import {
 } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { LandmarkWatch } from "./top";
+import { HOTKEY_HINT, HOTKEYS, KEYS, SCREEN_READING } from "./platform";
 import { looksEnglish, translateText } from "./translate";
 import {
   addBuild,
@@ -41,16 +43,6 @@ import {
 
 // Icônes du jeu servies par le site de RTS_Overlay ; à défaut on affiche le nom de l'image.
 const ICON_BASE = "https://rts-overlay.github.io/assets/aoe4/";
-
-const HOTKEYS = {
-  next: "CommandOrControl+Alt+ArrowRight",
-  previous: "CommandOrControl+Alt+ArrowLeft",
-  lock: "CommandOrControl+Alt+L",
-  toggle: "CommandOrControl+Alt+B",
-  mini: "CommandOrControl+Alt+M",
-};
-
-const HOTKEY_HINT = "⌘⌥←/→ étapes · ⌘⌥M réduire · ⌘⌥L verrouiller · ⌘⌥B afficher/masquer";
 
 const SESSION_KEY = "bogo.session.v1";
 const SETTINGS_KEY = "bogo.settings.v1";
@@ -70,6 +62,8 @@ interface Settings {
   showNext: boolean;
   /** Enregistrer les lectures de l'écran de chaque partie dans un fichier local, pour la rejouer. */
   record: boolean;
+  /** Taille de BoGo en %, de 70 à 130 (zoom de toute l'interface). */
+  scale: number;
 }
 
 type VisionEvent =
@@ -451,10 +445,27 @@ function loadSettings(): Settings {
       iconNames: s.iconNames !== false,
       showNext: s.showNext === true,
       record: s.record === true,
+      scale: clampScale(Number(s.scale ?? 100)),
     };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false, scale: 100 };
   }
+}
+
+const SCALE_MIN = 70;
+const SCALE_MAX = 130;
+
+function clampScale(scale: number): number {
+  return Number.isFinite(scale) ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(scale / 5) * 5)) : 100;
+}
+
+/** Zoom de toute l'interface ; la fenêtre suit (voir fitWindow). */
+function applyScale() {
+  getCurrentWebview()
+    .setZoom(state.settings.scale / 100)
+    .catch(() => {});
+  windowSize = "";
+  fitWindow();
 }
 
 function saveSettings(settings: Settings) {
@@ -469,7 +480,7 @@ function saveSettings(settings: Settings) {
   // Autre profil : sa partie en cours n'a pas encore été proposée.
   if (settings.profileId !== previous.profileId) state.handledGameId = null;
   pollGame();
-  if (settings.readScreen && !wasReading) startVision();
+  if (SCREEN_READING && settings.readScreen && !wasReading) startVision();
   if (!settings.readScreen && wasReading) {
     invoke("stop_vision");
     state.vision = { status: "", error: null };
@@ -536,10 +547,12 @@ function fitWindow() {
       2,
     );
     const height = Math.min(Math.ceil(content), MAX_HEIGHT);
-    const size = `${width}x${height}`;
+    // Les mesures sont en pixels de la page : la fenêtre les multiplie par le zoom choisi.
+    const zoom = state.settings.scale / 100;
+    const size = `${width}x${height}@${zoom}`;
     if (size === windowSize) return;
     windowSize = size;
-    appWindow.setSize(new LogicalSize(width, height)).catch(() => {});
+    appWindow.setSize(new LogicalSize(Math.round(width * zoom), Math.round(height * zoom))).catch(() => {});
   });
 }
 
@@ -596,24 +609,24 @@ function playHeader(saved: SavedBuild): HTMLElement {
     "actions",
     button("📚", "Bibliothèque", () => showLibrary()),
     button("⚙", "Réglages", () => showSettings()),
-    button("▾", "Réduire (⌘⌥M)", () => toggleMini()),
-    button(state.locked ? "🔒" : "🔓", "Verrouiller : les clics passent au jeu (⌘⌥L)", () => setLocked(!state.locked)),
-    button("✕", "Masquer BoGo (⌘⌥B pour le réafficher)", () => appWindow.hide()),
+    button("▾", `Réduire (${KEYS.mini})`, () => toggleMini()),
+    button(state.locked ? "🔒" : "🔓", `Verrouiller : les clics passent au jeu (${KEYS.lock})`, () => setLocked(!state.locked)),
+    button("✕", `Masquer BoGo (${KEYS.toggle} pour le réafficher)`, () => appWindow.hide()),
   );
 
   const step = steps[state.step];
   const age = step.age >= 1 && step.age <= 4 ? step.age : null;
   const where = h("span", "where");
   where.append(
-    button("◀", "Étape précédente (⌘⌥←)", () => goToStep(state.step - 1)),
+    button("◀", `Étape précédente (${KEYS.previous})`, () => goToStep(state.step - 1)),
     h("span", "", "Étape ", h("b", "", `${state.step + 1}/${steps.length}`)),
-    button("▶", "Étape suivante (⌘⌥→)", () => goToStep(state.step + 1)),
+    button("▶", `Étape suivante (${KEYS.next})`, () => goToStep(state.step + 1)),
   );
   if (age) where.append(h("span", "muted", " · "), gameIcon(`age/age_${age}.webp`, ""), h("span", "", ` Âge ${ROMAN[age]}`));
   const reading = readingState();
   shownReading = reading;
   head.append(
-    h("div", "head-row", progress, actions, h("span", "lock-hint", "🔒 ⌘⌥L")),
+    h("div", "head-row", progress, actions, h("span", "lock-hint", `🔒 ${KEYS.lock}`)),
     h("div", "meta", where, readingBadge(reading, saved.build.name)),
   );
   return head;
@@ -623,7 +636,7 @@ type ReadingState = "ok" | "clock" | "off" | "stopped" | "waiting" | "manual";
 
 /** État de la lecture de l'écran, toujours visible en partie : jamais de chiffres périmés présentés comme en direct. */
 function readingState(now = Date.now()): ReadingState {
-  if (!state.settings.readScreen) return "manual";
+  if (!SCREEN_READING || !state.settings.readScreen) return "manual";
   if (state.vision.error) return "stopped";
   if (hudIsFresh(now)) return "ok";
   if (clock.current(now) !== null) return "clock";
@@ -637,10 +650,10 @@ function readingBadge(reading: ReadingState, boName: string): HTMLElement {
   const badges: Record<ReadingState, [string, string, string]> = {
     ok: ["ok", time, "Lecture de l'écran OK"],
     clock: ["warn", time, "Horloge lue, mais panneau des villageois illisible : BoGo suit l'horloge du BO"],
-    off: ["warn", "Lecture coupée", "Plus rien n'est lu à l'écran : avance avec ⌘⌥→"],
+    off: ["warn", "Lecture coupée", `Plus rien n'est lu à l'écran : avance avec ${KEYS.next}`],
     stopped: ["bad", "Lecture arrêtée", state.vision.error ?? ""],
     waiting: ["wait", boName, "En attente de la première lecture de l'écran"],
-    manual: ["manual", boName, "Suivi manuel : ⌘⌥→ étape suivante"],
+    manual: ["manual", boName, `Suivi manuel : ${KEYS.next} étape suivante`],
   };
   const [kind, text, title] = badges[reading];
   const badge = h("span", `reading ${kind}`, h("i", "dot"), text);
@@ -669,7 +682,7 @@ function playView(saved: SavedBuild): HTMLElement {
 
   const view = h("main", "play");
   const reading = readingState();
-  if (reading === "off") view.append(h("div", "alert warn", "Suivi auto coupé : avance avec ⌘⌥→"));
+  if (reading === "off") view.append(h("div", "alert warn", `Suivi auto coupé : avance avec ${KEYS.next}`));
   if (reading === "stopped") view.append(h("div", "alert", "Lecture de l'écran arrêtée : voir ⚙"));
   const alert = alertBanner(auto, hud);
   if (alert) view.append(alert);
@@ -688,7 +701,7 @@ function playView(saved: SavedBuild): HTMLElement {
     // Villageois en plus sans la répartition de l'étape (attaque, choix du joueur) : BoGo ne
     // saute pas l'étape tout seul, il propose de le faire.
     if (auto && auto.drift >= DRIFT_HINT) {
-      view.append(h("div", "drift", `+${auto.drift} villageois sans suivre cette étape : ⌘⌥→ pour passer à la suite`));
+      view.append(h("div", "drift", `+${auto.drift} villageois sans suivre cette étape : ${KEYS.next} pour passer à la suite`));
     }
   }
   view.append(notes(step.notes, "notes", translate, named));
@@ -866,7 +879,7 @@ function miniView(): HTMLElement {
   if (gameTime !== null) pill.append(h("span", "clock", `⏱ ${formatClock(gameTime)}`));
   const hud = hudIsFresh() ? state.hud!.reading : null;
   if (hud && hud.idle > 0) pill.append(h("span", "warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} inactif${hud.idle > 1 ? "s" : ""}`));
-  pill.append(button("▴", "Agrandir (⌘⌥M)", () => toggleMini()));
+  pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()));
   for (const child of pill.querySelectorAll("span")) child.dataset.tauriDragRegion = "";
   return pill;
 }
@@ -1139,6 +1152,24 @@ function settingsView(): HTMLElement {
   const record = document.createElement("input");
   record.type = "checkbox";
   record.checked = state.settings.record;
+  const scale = document.createElement("input");
+  scale.type = "range";
+  scale.min = String(SCALE_MIN);
+  scale.max = String(SCALE_MAX);
+  scale.step = "5";
+  scale.value = String(state.settings.scale);
+  const scaleValue = h("b", "", `${state.settings.scale} %`);
+  // Appliqué en direct et gardé tout de suite : on voit la taille en la réglant.
+  scale.oninput = () => {
+    state.settings = { ...state.settings, scale: clampScale(Number(scale.value)) };
+    store(SETTINGS_KEY, state.settings);
+    scaleValue.textContent = `${state.settings.scale} %`;
+    applyScale();
+  };
+  if (!SCREEN_READING) {
+    readScreen.checked = false;
+    readScreen.disabled = true;
+  }
   const message = h("p", "status");
 
   const save = button("Enregistrer", "Enregistrer les réglages", () => {
@@ -1151,11 +1182,12 @@ function settingsView(): HTMLElement {
     saveSettings({
       profileId,
       apiKey: apiKey.value.trim(),
-      readScreen: readScreen.checked,
+      readScreen: SCREEN_READING ? readScreen.checked : state.settings.readScreen,
       translate: translate.checked,
       iconNames: iconNames.checked,
       showNext: showNext.checked,
       record: record.checked,
+      scale: state.settings.scale,
     });
     showLibrary();
   });
@@ -1170,7 +1202,15 @@ function settingsView(): HTMLElement {
       "La clé sert à détecter aussi les parties personnalisées. Connecté sur aoe4world.com, ouvre " +
         "aoe4world.com/account/profile_token et copie la valeur de « api_key ».",
     ),
-    h("label", "checkbox", readScreen, "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"),
+    h(
+      "label",
+      "checkbox",
+      readScreen,
+      SCREEN_READING
+        ? "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"
+        : "Lecture de l'écran : bientôt sous Windows. En attendant, suivi manuel avec les raccourcis.",
+    ),
+    h("label", "scale", "Taille de BoGo ", scaleValue, scale),
     visionStatus(),
     h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
     h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
@@ -1228,6 +1268,7 @@ restoreSession();
 resetEngine();
 if (!state.settings.profileId) state.view = "settings";
 render();
+if (state.settings.scale !== 100) applyScale();
 registerHotkeys();
 pollGame();
 setInterval(pollGame, POLL_SECONDS * 1000);
@@ -1235,7 +1276,7 @@ listen<{ id: string; style: Style }>("import-request", (event) => importFromGuid
 // La lecture de l'écran ne démarre qu'une fois l'écoute en place : sinon une erreur
 // immédiate (autorisation manquante) serait perdue.
 listen<VisionEvent>("vision", (event) => onVision(event.payload)).then(() => {
-  if (state.settings.readScreen) startVision();
+  if (SCREEN_READING && state.settings.readScreen) startVision();
 });
 // macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
 setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
