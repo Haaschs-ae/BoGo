@@ -953,7 +953,8 @@ function visionText(): string {
   if (topText) parts.push(`en haut : « ${topText} »`);
   if (parts.length) return `Lu à l'écran : ${parts.join(" · ")}.`;
   const status = VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
-  if (state.vision.status === "no_window" && visionApps.length) return `${status} Applis vues : ${visionApps.join(", ")}.`;
+  // La liste des applis ouvertes (visionApps) reste hors écran : elle finirait sur une capture.
+  if (state.vision.status === "no_window" && visionApps.length) return `${status} Une appli NVIDIA est ouverte.`;
   return status;
 }
 
@@ -989,6 +990,8 @@ function settingsView(): HTMLElement {
   profile.value = state.settings.profileId;
   profile.placeholder = "Lien aoe4world.com/players/… ou identifiant";
   const apiKey = document.createElement("input");
+  apiKey.type = "password";
+  apiKey.autocomplete = "off";
   apiKey.value = state.settings.apiKey;
   apiKey.placeholder = "Facultative";
   const readScreen = document.createElement("input");

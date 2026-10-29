@@ -155,10 +155,66 @@ La compilation de l'appli Mac est faite par GitHub Actions (`.github/workflows/b
 
 ## Projets dont on s'inspire
 
-- [aoe4world/overlay](https://github.com/aoe4world/overlay) : détection de la partie via l'API AoE4World ;
-  les drapeaux des civilisations viennent de ce projet (licence MIT).
-- [aoe4world/data](https://github.com/aoe4world/data) (licence MIT) : coûts des TC et des passages d'âge.
+- [aoe4world/overlay](https://github.com/aoe4world/overlay) : détection de la partie via l'API AoE4World.
+- [aoe4world/data](https://github.com/aoe4world/data) : coûts des TC et des passages d'âge.
 - [FluffyMaguro/AoE4_Overlay](https://github.com/FluffyMaguro/AoE4_Overlay) : overlay de partie et de BO.
 - [CraftySalamander/RTS_Overlay](https://github.com/CraftySalamander/RTS_Overlay) : format de BO, raccourcis globaux, mode chrono.
-  Les icônes du jeu (consignes des BO, ressources, villageois, âges, TC) sont chargées depuis
-  son site ; hors ligne, BoGo affiche des emojis à la place.
+- [aoe4guides.com](https://aoe4guides.com) : les build orders, écrits par leurs auteurs.
+
+## Contenus tiers
+
+- **Code de BoGo** : voir le fichier LICENSE (à venir : le choix de la licence est en cours).
+- **Visuels et données d'Age of Empires IV** (drapeaux des civilisations dans `src/assets/flags`,
+  icônes du jeu chargées depuis le site de RTS Overlay, captures du HUD dans `docs/assets`,
+  coûts dans `src/data/costs.json` dérivés d'aoe4world/data) : © Microsoft Corporation. Ils ne
+  sont **pas** couverts par la licence du code et ne sont utilisables que selon les
+  [Game Content Usage Rules](https://www.xbox.com/en-US/developers/rules) de Microsoft. Les dépôts
+  aoe4world/overlay et aoe4world/data sont publiés sous licence MIT, mais cette licence ne porte
+  que sur leur code, pas sur les éléments du jeu.
+- **Build orders** : ils restent la propriété de leurs auteurs. BoGo garde pour chaque BO l'auteur
+  et le lien d'origine, ne contient aucun BO dans son dépôt, et la traduction en français n'est
+  qu'une aide de lecture locale. Données aoe4guides.com : merci à son auteur et aux créateurs de BO.
+
+## Fair-play : ce que BoGo fait, et ne fera jamais
+
+Aucune règle publique de Microsoft ou de World's Edge n'autorise ni n'interdit explicitement un
+assistant qui lit l'écran. BoGo est **toléré à ce jour, sans approbation officielle**. Il reste
+défendable tant qu'il respecte ces limites, qui sont des règles du projet :
+
+- BoGo **lit uniquement les pixels de ta propre fenêtre** (GeForce Now) avec les API publiques du
+  système, et fait la reconnaissance de texte sur ta machine. Rien n'est enregistré ni envoyé.
+- BoGo **n'envoie jamais de touche ni de clic** au jeu, **ne lit ni n'écrit la mémoire du jeu**,
+  **n'injecte aucun code**, ne touche pas au trafic réseau ni aux fichiers du jeu.
+- BoGo **n'affiche que ce que tu vois déjà** ou ce qui est public avant la partie : jamais d'information
+  que le jeu te cache (brouillard de guerre, ressources adverses).
+- BoGo ne garde ni n'affiche les pseudos des autres joueurs.
+- En tournoi ou en cup : BoGo fermé, sauf accord écrit de l'organisateur. En stream : dis ce que
+  fait BoGo, ou sors-le de la capture.
+- Teste les nouvelles versions contre l'IA ou en partie personnalisée, jamais en classé ; ne quitte
+  jamais une partie classée à cause d'un bug.
+
+## Données et confidentialité
+
+- BoGo contacte trois sites : aoe4world.com (ta partie en cours, avec ton identifiant de profil et,
+  si tu l'as saisie, ta clé API), aoe4guides.com (les BO que tu importes) et rts-overlay.github.io
+  (les icônes du jeu, hébergées sur GitHub, qui journalise les adresses IP). Aucun serveur BoGo,
+  aucune télémétrie.
+- Ta clé API et ta bibliothèque sont stockées sur ta machine seulement. Ne partage jamais de capture
+  des réglages ⚙ sans masquer la clé.
+- Supprimer les données de BoGo : supprimer l'appli et le dossier `~/Library/WebKit/com.haaschs.bogo`.
+
+## Mentions légales
+
+Age of Empires IV © Microsoft Corporation. BoGo was created under Microsoft's
+["Game Content Usage Rules"](https://www.xbox.com/en-US/developers/rules) using assets from
+Age of Empires IV, and it is not endorsed by or affiliated with Microsoft.
+
+BoGo a été créé dans le cadre des « Game Content Usage Rules » de Microsoft avec des éléments
+d'Age of Empires IV ; il n'est ni approuvé par Microsoft ni affilié à Microsoft.
+
+Age of Empires est une marque de Microsoft ; GeForce NOW et NVIDIA sont des marques de NVIDIA.
+BoGo n'est affilié ni à Microsoft, ni à NVIDIA, ni à AoE4World, ni à aoe4guides, ni à RTS Overlay.
+BoGo est et restera gratuit, sans publicité.
+
+BoGo est un outil expérimental, fourni tel quel, sans garantie : tu l'utilises sous ta propre
+responsabilité. Seul le dépôt github.com/Haaschs-ae/BoGo est officiel.

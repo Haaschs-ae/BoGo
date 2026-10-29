@@ -47,7 +47,8 @@ async fn get_json(site: &str, url: &str) -> Result<serde_json::Value, String> {
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("Connexion à {site} impossible : {e}"))?;
+        // Sans l'URL : elle contient la clé API, et ce message est affiché dans les réglages.
+        .map_err(|e| format!("Connexion à {site} impossible : {}", e.without_url()))?;
     if !response.status().is_success() {
         return Err(format!("{site} a répondu {}.", response.status()));
     }

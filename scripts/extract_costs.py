@@ -1,4 +1,7 @@
-"""Extrait de aoe4world/data (licence MIT) le coût du TC et des passages d'âge de chaque civ.
+"""Extrait de aoe4world/data le coût du TC et des passages d'âge de chaque civ.
+
+Le dépôt aoe4world/data est sous licence MIT, mais les données du jeu restent © Microsoft :
+usage selon les Game Content Usage Rules (https://www.xbox.com/en-US/developers/rules).
 
 Usage : python3 scripts/extract_costs.py <chemin vers un clone de github.com/aoe4world/data>
 Écrit src/data/costs.json, indexé par identifiant de civ AoE4World (« english », « abbasid_dynasty »…).
