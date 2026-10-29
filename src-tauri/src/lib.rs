@@ -106,17 +106,38 @@ fn start_vision(app: AppHandle, vision: State<Vision>) -> Result<(), String> {
         .with_file_name("bogo-vision");
     let mut child = Command::new(&helper)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Impossible de lancer la lecture de l'écran ({}) : {e}", helper.display()))?;
     let stdout = child.stdout.take().ok_or("Sortie de bogo-vision indisponible.")?;
+    let stderr = child.stderr.take().ok_or("Sortie d'erreur de bogo-vision indisponible.")?;
+    // Garde les dernières lignes d'erreur pour expliquer un arrêt (plantage, bibliothèque absente…).
+    let errors = std::thread::spawn(move || {
+        let mut last: Vec<String> = Vec::new();
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            last.push(line);
+            if last.len() > 5 {
+                last.remove(0);
+            }
+        }
+        last.join(" | ")
+    });
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) {
                 let _ = app.emit("vision", event);
             }
         }
-        let _ = app.emit("vision", serde_json::json!({ "type": "stopped" }));
+        let status = app
+            .state::<Vision>()
+            .0
+            .lock()
+            .ok()
+            .and_then(|mut running| running.as_mut().and_then(|c| c.wait().ok()))
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let detail = errors.join().unwrap_or_default();
+        let _ = app.emit("vision", serde_json::json!({ "type": "stopped", "status": status, "detail": detail }));
     });
     *running = Some(child);
     Ok(())

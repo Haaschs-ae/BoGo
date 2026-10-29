@@ -64,7 +64,7 @@ type VisionEvent =
   | { type: "top"; tokens: OcrToken[] }
   | { type: "status"; code: "ok" | "no_window" | "no_clock" }
   | { type: "error"; code: string; message: string }
-  | { type: "stopped" };
+  | { type: "stopped"; status?: string; detail?: string };
 
 const VISION_STATUS: Record<string, string> = {
   ok: "Horloge du jeu lue.",
@@ -282,8 +282,9 @@ function refreshHeader() {
   app.querySelector("header")?.replaceWith(header());
 }
 
-async function startVision() {
-  state.vision = { status: "", error: null };
+/** `keepError` : relance automatique, on garde la raison de l'arrêt affichée. */
+async function startVision(keepError = false) {
+  state.vision = { status: "", error: keepError ? state.vision.error : null };
   try {
     await invoke("start_vision");
   } catch (err) {
@@ -294,6 +295,8 @@ async function startVision() {
 
 /** Texte lu en haut au centre (âge, passage d'âge en cours), affiché dans les réglages. */
 let topText = "";
+/** Relances automatiques de la lecture de l'écran depuis la dernière lecture réussie. */
+let visionRestarts = 0;
 
 function onVision(event: VisionEvent) {
   if (event.type === "top") {
@@ -301,6 +304,7 @@ function onVision(event: VisionEvent) {
     return;
   }
   if (event.type === "hud") {
+    visionRestarts = 0;
     const reading = parseHud(event.tokens);
     if (!reading) return;
     const now = Date.now();
@@ -334,8 +338,16 @@ function onVision(event: VisionEvent) {
   }
   if (event.type === "error") state.vision.error = event.message;
   else if (event.type === "status") state.vision = { status: event.code, error: null };
-  // Après une erreur (autorisation manquante…), l'arrêt garde le message d'erreur.
-  else state.vision.status = "stopped";
+  else {
+    // Arrêt inattendu : on garde la raison, puis on relance (3 fois au plus d'affilée).
+    state.vision.status = "stopped";
+    const reason = [event.status, event.detail].filter(Boolean).join(" : ");
+    if (reason) state.vision.error ??= `Lecture de l'écran arrêtée (${reason}).`;
+    if (state.settings.readScreen && visionRestarts < 3) {
+      visionRestarts++;
+      setTimeout(() => startVision(true), 5000);
+    }
+  }
   if (state.view === "play") render();
   else updateVisionStatus();
 }
