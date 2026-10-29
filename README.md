@@ -25,8 +25,10 @@ modes, coach contre l'IA, réglages, fair-play).
    xattr -cr /Applications/BoGo.app
    ```
 
-BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. En partie, ✕ la masque (⌘⌥B, ou ton
-raccourci, pour la réafficher) ; depuis la bibliothèque, ✕ puis « Quitter ? » ferme BoGo.
+BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Pour le fermer, ✕ puis
+« Quitter ? » (partout : en partie, dans la bibliothèque, sur la pastille « BO terminé ») ; pour
+seulement le masquer, ⌘⌥B (ou ton raccourci). À la fin du BO, BoGo se déverrouille pour que la
+pastille réponde aux clics.
 
 ### Windows (expérimental)
 
@@ -156,7 +158,7 @@ Raccourcis** : « Changer », puis taper la combinaison voulue (avec ⌘, ⌃ ou
 seule ; Échap pour annuler) ; « Défaut » pour revenir. BoGo refuse ce qui gênerait la frappe
 (une lettre seule), ce qui appartient au système (⌘Q, ⌘Tab…) et les doublons ; si une autre appli
 a déjà pris la combinaison, il garde l'ancienne. Sans raccourci « Verrouiller » en place, BoGo ne
-se verrouille pas, et sans « Afficher / masquer », ✕ ne le masque pas : il resterait hors de portée.
+se verrouille pas : il resterait hors de portée.
 
 ## Fonctionnement prévu
 

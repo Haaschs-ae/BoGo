@@ -190,6 +190,59 @@ fn journal_write(app: AppHandle, text: String) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// Traduit en français des textes de BO avec la traduction intégrée de macOS (bogo-translate,
+/// macOS 15+). Appelé à l'import d'un BO, jamais pendant une partie. Ailleurs : erreur, et
+/// l'interface garde son dictionnaire.
+#[tauri::command]
+async fn translate_texts(texts: Vec<String>) -> Result<Vec<String>, String> {
+    if !cfg!(target_os = "macos") {
+        return Err("indisponible".into());
+    }
+    let helper = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .with_file_name("bogo-translate");
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut child = Command::new(&helper)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("traduction de macOS indisponible ({e})"))?;
+        let input = serde_json::to_vec(&texts).map_err(|e| e.to_string())?;
+        child
+            .stdin
+            .take()
+            .ok_or("entrée indisponible")?
+            .write_all(&input)
+            .map_err(|e| e.to_string())?;
+        // Au premier usage, macOS peut demander de télécharger les langues : on attend 3 min au plus.
+        let stdout = child.stdout.take().ok_or("sortie indisponible")?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let _ = BufReader::new(stdout).read_line(&mut line);
+            let _ = tx.send(line);
+        });
+        let line = match rx.recv_timeout(std::time::Duration::from_secs(180)) {
+            Ok(line) => line,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("la traduction de macOS n'a pas répondu".into());
+            }
+        };
+        let _ = child.wait();
+        let answer: serde_json::Value = serde_json::from_str(line.trim())
+            .map_err(|_| "traduction de macOS indisponible (macOS 15 ou plus requis)".to_string())?;
+        if answer["ok"] != true {
+            return Err(answer["error"].as_str().unwrap_or("erreur de traduction").to_string());
+        }
+        serde_json::from_value(answer["texts"].clone()).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Processus bogo-vision en cours (lecture de l'horloge à l'écran).
 #[derive(Default)]
 struct Vision(Mutex<Option<Child>>);
@@ -301,6 +354,7 @@ pub fn run() {
             record_event,
             journal_read,
             journal_write,
+            translate_texts,
             quit
         ])
         .setup(|_app| {

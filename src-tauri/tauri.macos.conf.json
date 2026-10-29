@@ -10,7 +10,8 @@
       "minimumSystemVersion": "11.0"
     },
     "externalBin": [
-      "binaries/bogo-vision"
+      "binaries/bogo-vision",
+      "binaries/bogo-translate"
     ]
   }
 }

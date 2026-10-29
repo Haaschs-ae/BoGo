@@ -43,6 +43,7 @@ import {
   type HotkeyAction,
 } from "./platform";
 import { looksEnglish, translateLine } from "./translate";
+import { cachedLine, loadTranslations, missingTexts, saveTranslations } from "./translations";
 import { adviseBuild, categoryPicks, COUNTDOWN_SECONDS, distributionMismatch, type Advice } from "./advice";
 import { newEntry, parseJournal, serializeJournal, type GameEntry, type LaunchHow } from "./journal";
 import {
@@ -302,7 +303,9 @@ function finishBuild() {
   state.finished = true;
   state.mini = true;
   recordEvent({ type: "finished", step: state.step });
-  render();
+  // La pastille « BO terminé » répond aux clics (agrandir, quitter) : BoGo n'est plus verrouillé.
+  if (state.locked) setLocked(false);
+  else render();
 }
 
 function toggleMini() {
@@ -347,11 +350,6 @@ async function setLocked(locked: boolean) {
   state.locked = locked && !hotkeyErrors.lock;
   render();
   await appWindow.setIgnoreCursorEvents(state.locked).catch(() => {});
-}
-
-/** BoGo n'a pas d'icône dans le Dock : sans raccourci pour le réafficher, on ne le masque pas. */
-function hideOverlay() {
-  if (!hotkeyErrors.toggle) appWindow.hide();
 }
 
 // ---------- Choix du BO au début de la partie ----------
@@ -665,6 +663,39 @@ async function importFromGuides(id: string, style: Style) {
   render();
 }
 
+/** Traductions de macOS gardées sur la machine (voir translations.ts). */
+const translations = loadTranslations(localStorage);
+/** La traduction de macOS a répondu (« ok »), ou n'existe pas ici (dictionnaire seulement). */
+let macTranslation: "unknown" | "ok" | "unavailable" = "unknown";
+let translating = false;
+
+/**
+ * Fait traduire par macOS les consignes anglaises de ces BO, une fois, hors partie : la petite
+ * fenêtre que macOS peut ouvrir ne doit jamais prendre la main pendant une partie.
+ */
+function ensureTranslated(builds: BuildOrder[]) {
+  const playing = !!state.game?.ongoing || clock.current(Date.now()) !== null;
+  if (!state.settings.translate || macTranslation === "unavailable" || translating || playing) return;
+  const missing = [...new Set(builds.filter(looksEnglish).flatMap((b) => missingTexts(b, translations)))];
+  if (missing.length === 0) return;
+  translating = true;
+  invoke<string[]>("translate_texts", { texts: missing })
+    .then((french) => {
+      missing.forEach((text, i) => {
+        if (french[i]) translations[text] = french[i];
+      });
+      saveTranslations(localStorage, translations);
+      macTranslation = "ok";
+      render();
+    })
+    .catch(() => {
+      macTranslation = "unavailable";
+    })
+    .finally(() => {
+      translating = false;
+    });
+}
+
 function saveImported(build: BuildOrder, style: Style, sourceUrl?: string) {
   state.library = addBuild(state.library, build, style, sourceUrl);
   saveLibrary(localStorage, state.library);
@@ -679,6 +710,7 @@ function saveImported(build: BuildOrder, style: Style, sourceUrl?: string) {
   }
   const civs = civilizationsOf(build).join(", ");
   state.importStatus = { text: `« ${build.name} » ajouté (${civs}, ${STYLES[style]}).`, error: false };
+  ensureTranslated([build]);
 }
 
 function errorText(err: unknown): string {
@@ -976,8 +1008,9 @@ function fitWindow() {
 }
 
 /** Quitter demande un second clic dans les 3 s : ✕ est petit et proche des autres boutons. */
+/** Quitter BoGo : un second clic dans les 3 s confirme (« Quitter ? »), contre un clic malheureux. */
 function quitButton(): HTMLElement {
-  const quit = button("✕", "Quitter BoGo", () => {
+  const quit = button("✕", "Quitter BoGo (second clic pour confirmer)", () => {
     if (quit.dataset.confirm) return invoke("quit");
     quit.dataset.confirm = "1";
     quit.textContent = "Quitter ?";
@@ -1038,7 +1071,7 @@ function playHeader(saved: SavedBuild): HTMLElement {
     button("⚙", "Réglages", () => showSettings()),
     button("▾", `Réduire (${KEYS.mini})`, () => toggleMini()),
     lockButton(),
-    button("✕", `Masquer BoGo (${KEYS.toggle} pour le réafficher)`, () => hideOverlay()),
+    quitButton(),
   );
 
   const step = steps[state.step];
@@ -1364,7 +1397,7 @@ function miniView(): HTMLElement {
   // Inactifs : une alerte, seulement en IA.
   const hud = features().alerts ? projectLive(features(), hudIsFresh() ? state.hud!.reading : null, null).hud : null;
   if (hud && hud.idle > 0) pill.append(h("span", "warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} inactif${hud.idle > 1 ? "s" : ""}`));
-  pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()));
+  pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()), quitButton());
   for (const child of pill.querySelectorAll("span")) child.dataset.tauriDragRegion = "";
   return pill;
 }
@@ -1406,7 +1439,7 @@ function noteParts(line: string, translate: boolean, named = new Set<string>()):
   const tokens = tokenizeNote(line);
   const texts = tokens.flatMap((part) => (part.kind === "text" ? [part.text.replace(/->/g, "→")] : []));
   // Toute la consigne d'un coup : traduite entière, ou laissée en anglais (jamais de franglais).
-  const shown = translate ? translateLine(texts) : texts;
+  const shown = translate ? (cachedLine(texts, translations) ?? translateLine(texts)) : texts;
   let t = 0;
   const parts = tokens.map((part, i) => {
     if (part.kind === "image") return part;
@@ -1525,6 +1558,8 @@ function civView(): HTMLElement {
   // Le BO de base de la civ (📌) en tête de liste.
   const baseId = state.matchups.base[civ];
   const builds = filterBuilds(state.library, civ, state.style).sort((a, b) => Number(b.id === baseId) - Number(a.id === baseId));
+  // En parcourant la bibliothèque (hors partie) : BO anglais traduits par macOS, une fois.
+  setTimeout(() => ensureTranslated(builds.map((b) => b.build)), 0);
   const list = h("ul", "builds");
   if (builds.length === 0) list.append(h("li", "empty", "Aucun BO ici. Trouve-en un sur aoe4guides ou importe un lien."));
   for (const b of builds) {
@@ -2064,6 +2099,13 @@ function settingsView(): HTMLElement {
     hotkeySettings(),
     visionStatus(),
     h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
+    h(
+      "p",
+      "hint",
+      macTranslation === "unavailable"
+        ? "Traduction : dictionnaire de BoGo (la traduction de macOS demande macOS 15 ou plus). Une consigne qu'il ne sait pas traduire reste en anglais."
+        : "Traduction : celle de macOS, sur ta machine, faite à l'import du BO (hors partie). Au premier usage, macOS peut proposer de télécharger le français.",
+    ),
     h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
     h("label", "checkbox", showNext, "Montrer aussi l'étape suivante (« Ensuite ») pendant la partie"),
     h("label", "checkbox", record, "Enregistrer mes parties (lectures de l'écran) pour les rejouer et régler BoGo hors ligne"),
