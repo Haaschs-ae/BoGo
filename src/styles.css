@@ -1106,7 +1106,7 @@ button.go {
   color: var(--ok);
 }
 
-.mode-badge.checking {
+.mode-badge.waiting {
   border: 1px solid var(--ok);
   background: transparent;
   color: var(--ok);

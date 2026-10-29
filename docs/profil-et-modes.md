@@ -30,20 +30,17 @@ présence d'humains, jamais celle de l'IA. La première règle qui s'applique ga
 2. AoE4World montre une partie contre des humains en cours (classée ou rapide, tous suffixes ;
    personnalisée avec un adversaire listé ; type inconnu) → **VS**.
 3. « IA » n'est pas choisi → **VS** (défaut).
-4. Pas de profil AoE4World → **VS** : rien ne peut être vérifié.
-5. AoE4World montre une personnalisée sans adversaire listé, en cours, dont le début colle à
-   l'horloge lue → **IA** (confirmé).
-6. Un sondage AoE4World parti à 1:00 de jeu ou plus, pendant cette partie-ci, ne voit aucune
-   partie contre des humains → **IA** (vérifié). Le délai d'AoE4World n'est pas mesuré : le journal note l'horloge à la
-   détection (`seenAtClock`) pour régler ce seuil (`GRACE_SECONDS`).
-7. Sinon → **VS**, badge « IA… » (vérification en cours).
+4. Pas de profil AoE4World → **VS** : rien ne pourrait détecter une classée.
+5. L'horloge de la partie n'est pas lue (menus, partie d'avant) → **VS**, badge « IA… ».
+6. Sinon → **IA**, dès 0:00 : contre l'IA, la première minute (moutons, premier bois) compte
+   (choix du joueur, 29/10). Si AoE4World voit ensuite une classée, une rapide ou un joueur
+   listé en face, règle 1 ou 2 : retour en VS aussitôt, avec un bandeau.
 
 Le choix « IA » se fait avec la bascule VS / IA de l'en-tête, hors jeu. Il n'est jamais
 enregistré d'un lancement de BoGo à l'autre. Il vaut pour la partie en cours ou la prochaine, et
 tombe : à la fin de la partie où il a servi (deux minutes sans horloge lue) ou au début de la
 suivante (l'horloge repart en arrière), dès qu'un joueur est vu en face dans la partie en cours,
-après 15 min sans partie, au redémarrage, ou d'un clic. Une vérification ne vaut que pendant la
-partie dont l'horloge est lue : jamais dans les menus, jamais pour la partie suivante.
+après 15 min sans partie, au redémarrage, ou d'un clic.
 
 En jeu : un badge non cliquable « VS », « IA… » ou « IA ». Bandeaux de quelques secondes :
 « Joueur détecté en face : BoGo passe en VS jusqu'à la fin de la partie. » et « Nouvelle
@@ -74,8 +71,9 @@ ni dérive, ni « payable »), et la vue ne lit la partie qu'au travers d'une se
 
 - Une personnalisée contre un joueur sans clé API AoE4World (ou avec un compte qui ne peut pas
   en avoir) est invisible : si tu choisis IA, BoGo te croit. Laisse VS.
-- Si AoE4World met plus d'une minute à voir une classée lancée juste après avoir choisi IA, le
-  coaching peut s'afficher quelques secondes. Le seuil sera réglé sur les mesures du journal.
+- Si tu choisis IA puis lances une classée par erreur, le coaching s'affiche jusqu'à ce
+  qu'AoE4World voie la partie (quelques secondes à une minute, délai noté au journal :
+  `seenAtClock`). Ne choisis IA qu'avant une partie contre l'IA.
 - La lecture du panneau des villageois sert encore, en VS, à tourner les pages.
 - Un contournement volontaire (autre profil, code modifié) ne peut pas être empêché ; le code est
   public et le mode toujours affiché.

@@ -78,10 +78,9 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
   - **VS**, par défaut, contre des joueurs (classée, rapide, personnalisée) : BoGo n'est qu'un
     BO papier qui tourne ses pages tout seul. Consignes, cibles écrites, prochain villageois tel
     qu'écrit ; ni alertes, ni comptes lus en direct, ni « clique ! ».
-  - **IA**, entraînement contre l'IA : clique VS → IA dans l'en-tête avant la partie. BoGo
-    vérifie sur AoE4World que ce n'est ni une classée ni une partie rapide (1 min de jeu), puis
-    te coache (tout ce qui suit). Le choix vaut pour une partie et tombe dès qu'un joueur est vu
-    en face.
+  - **IA**, entraînement contre l'IA : clique VS → IA dans l'en-tête avant la partie. BoGo te
+    coache dès 0:00 (tout ce qui suit). Le choix vaut pour une partie ; si AoE4World voit une
+    classée, une partie rapide ou un joueur en face, retour en VS aussitôt.
 - **Pendant la partie en IA**, du plus important au détail : une alerte s'il y en a une
   (« 3 villageois de trop à la nourriture → envoies-en 2 au bois », villageois inactifs),
   la grande icône du **prochain villageois** produit, sans chiffre (« BOIS » ; « BOIS · il

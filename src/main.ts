@@ -379,11 +379,11 @@ function gameEntry(): GameEntry | undefined {
 
 /**
  * Ce qu'AoE4World dit des adversaires : un joueur vu en face dans la partie en cours impose VS
- * jusqu'à sa fin ; une réponse sans partie contre des humains vérifie le choix « IA ».
+ * jusqu'à sa fin et fait tomber le choix « IA ».
  */
-function noteOpposition(game: DetectedGame | null, poll: PollStart, wasTraining: boolean) {
+function noteOpposition(game: DetectedGame | null, wasTraining: boolean) {
   const now = Date.now();
-  const { memory, notice } = aoe4worldSeen(modeMemory, game, poll, clock.current(now), now, wasTraining);
+  const { memory, notice } = aoe4worldSeen(modeMemory, game, clock.current(now), now, wasTraining);
   modeMemory = memory;
   if (notice) modeNotice = { text: notice, until: now + 5000 };
   if (engine) engine.coaching = features().coaching;
@@ -702,7 +702,7 @@ async function pollGame() {
     const wasTraining = mode() === "training";
     state.gameError = null;
     state.game = game;
-    noteOpposition(game, poll, wasTraining);
+    noteOpposition(game, wasTraining);
     const sawEarlier = lastPollEpoch === poll.epoch && poll.clock !== null;
     lastPollEpoch = poll.clock !== null ? poll.epoch : null;
     if (game?.ongoing && game.id !== state.handledGameId) {
@@ -1059,10 +1059,10 @@ function playHeader(saved: SavedBuild): HTMLElement {
   return head;
 }
 
-/** VS, IA… (vérification) ou IA : toujours visible en partie, jamais cliquable en jeu. */
+/** VS, IA… (horloge pas encore lue) ou IA : toujours visible en partie, jamais cliquable en jeu. */
 function modeBadge(): HTMLElement {
   const { mode: m, why } = modeState();
-  const key = m === "training" ? "training" : why === "checking" ? "checking" : "versus";
+  const key = m === "training" ? "training" : why === "waiting" ? "waiting" : "versus";
   const badge = h("span", `mode-badge ${key}`, MODE_LABELS[key].badge);
   badge.title = why === "humans" ? `${MODE_LABELS.versus.title}. Joueur détecté en face : VS jusqu'à la fin de la partie.` : MODE_LABELS[key].title;
   return badge;
@@ -1095,12 +1095,10 @@ function modePill(): HTMLElement {
     ? "VS : contre des joueurs, ton BO seulement, sans conseil calculé en direct. Clique avant une partie contre l'IA pour l'entraînement."
     : m === "training"
       ? `${MODE_LABELS.training.title}. Revient à VS à la fin de la partie. Clique pour revenir à VS.`
-      : modeMemory.lastClock && Date.now() - modeMemory.lastClock.at < 60_000
-        ? `${MODE_LABELS.checking.title}. Clique pour revenir à VS.`
-        : "Entraînement contre l'IA pour ta prochaine partie. BoGo vérifie d'abord sur AoE4World que ce n'est ni une classée ni une partie rapide (1 min de jeu). Clique pour revenir à VS.";
+      : "Entraînement contre l'IA pour ta prochaine partie, dès 0:00. Si AoE4World voit une classée, une partie rapide ou un joueur en face, BoGo repasse en VS. Clique pour revenir à VS.";
   const label = !armed ? "VS" : m === "training" ? "IA" : "IA…";
   const pill = button(label, title, () => setTraining(!armed));
-  pill.className = `mode-badge ${!armed ? "versus" : m === "training" ? "training" : "checking"}`;
+  pill.className = `mode-badge ${!armed ? "versus" : m === "training" ? "training" : "waiting"}`;
   return pill;
 }
 
@@ -2042,8 +2040,8 @@ function settingsView(): HTMLElement {
       "hint",
       "Deux modes. VS, par défaut, contre des joueurs : ton BO et ses pages qui tournent toutes seules, rien de " +
         "calculé sur ta partie. IA, à choisir avant une partie contre l'IA (bouton VS / IA en haut) : en plus, alertes " +
-        "de répartition et d'inactifs, comptes réel / cible, stock du passage d'âge. BoGo vérifie d'abord sur AoE4World " +
-        "que ce n'est ni une classée ni une partie rapide (1 min de jeu) : ne choisis IA qu'avant une partie contre l'IA.",
+        "de répartition et d'inactifs, comptes réel / cible, stock du passage d'âge, dès 0:00. Si AoE4World voit une " +
+        "classée, une partie rapide ou un joueur en face, retour en VS : ne choisis IA qu'avant une partie contre l'IA.",
     ),
     h("label", "scale", "Taille de BoGo ", scaleValue, scale),
     hotkeySettings(),

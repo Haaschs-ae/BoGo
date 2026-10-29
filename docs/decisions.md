@@ -42,8 +42,9 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   l'IA).** Remplace « Classé sobre / Entraînement en personnalisée » : une personnalisée contre un
   joueur est en VS. VS = BO papier qui tourne ses pages (ni alertes, ni comptes en direct, ni
   « clique ! », prochain villageois tel qu'écrit, pages au nombre de villageois écrit). IA
-  seulement sur choix explicite, vérifié (personnalisée sans adversaire listé, ou aucune partie
-  contre des humains vue après 1:00 de jeu), pour une partie ; VS forcé dès qu'un joueur est vu.
+  seulement sur choix explicite, dès 0:00 (choix du joueur : la première minute compte à
+  l'entraînement), pour une partie ; VS forcé dès qu'AoE4World voit une classée, une rapide ou un
+  joueur en face.
   Voir docs/profil-et-modes.md.
 - **2026-10-29 · Mes matchups : 📌 BO de base par civ et règles civ × adversaire × carte.**
   Ce que tu as réglé passe avant ce que BoGo déduit (mémoire, habitude). Ordre : adversaire et
