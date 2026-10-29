@@ -55,6 +55,15 @@ const PHRASES: [string, string][] = [
   ["fishing boat", "bateau de pêche"],
   ["men-at-arms", "hommes d'armes"],
   ["man-at-arms", "homme d'armes"],
+  ["men at arms", "hommes d'armes"],
+  ["man at arms", "homme d'armes"],
+  ["palisade wall", "palissade"],
+  ["palisade gate", "porte de palissade"],
+  ["stone wall", "mur de pierre"],
+  ["battering ram", "bélier"],
+  ["siege tower", "tour de siège"],
+  ["trade ship", "navire marchand"],
+  ["transport ship", "navire de transport"],
   ["olive oil", "huile d'olive"],
   ["double broadaxe", "double hache"],
   ["survival techniques", "techniques de survie"],
@@ -106,6 +115,9 @@ const WORDS: Record<string, string> = {
   tower: "tour",
   towers: "tours",
   castle: "château",
+  monastery: "monastère",
+  mosque: "mosquée",
+  university: "université",
   // Unités
   scout: "éclaireur",
   scouts: "éclaireurs",
@@ -124,9 +136,12 @@ const WORDS: Record<string, string> = {
   trader: "marchand",
   traders: "marchands",
   prelate: "prélat",
+  mangonel: "mangonneau",
+  trebuchet: "trébuchet",
   // Technologies et âges
   wheelbarrow: "brouette",
   forestry: "sylviculture",
+  fertilization: "fertilisation",
   feudal: "féodal",
   imperial: "impérial",
   age: "âge",
@@ -251,6 +266,12 @@ export function translateText(text: string): string {
   });
   // Articles supprimés : on ne laisse pas d'espaces doubles.
   return out.replace(/ {2,}/g, " ").replace(/^ (?=\S)/, (m) => (text.startsWith(" ") ? m : ""));
+}
+
+/** Traduit un nom entier (« lumber camp », « horseman ») ; un nom inconnu reste en anglais. */
+export function translateTerm(term: string): string {
+  const lower = term.toLowerCase();
+  return PHRASES.find(([en]) => en === lower)?.[1] ?? (WORDS[lower] || term);
 }
 
 const EN_MARKERS = /\b(the|and|to|until|then|with|on|at|from|build|send|keep|rest|villagers?|sheep|wood|gold|food|stone|berries|house|age|up|if|when|after|before)\b/gi;

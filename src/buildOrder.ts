@@ -119,10 +119,11 @@ export function tokenizeNote(note: string): NotePart[] {
   return parts;
 }
 
-/** Nom lisible d'une image : "building_economy/house.webp" → "house". */
+/** Nom lisible d'une image : "building_economy/house.webp" → "house", "horseman-1.webp" → "horseman". */
 export function imageLabel(path: string): string {
   const file = path.split("/").pop() ?? path;
-  return file.replace(/\.[a-z]+$/i, "").replace(/[_-]+/g, " ");
+  // Le numéro final est l'âge de la variante dessinée (horseman-1, knight-2).
+  return file.replace(/\.[a-z]+$/i, "").replace(/[_-]+/g, " ").replace(/ \d+$/, "");
 }
 
 export function civilizationsOf(build: BuildOrder): string[] {

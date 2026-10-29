@@ -6,7 +6,6 @@ import { extractBuildId, fetchBuild } from "./aoe4guides";
 import { extractProfileId, fetchLastGame, kindLabel, type DetectedGame } from "./aoe4world";
 import {
   civilizationsOf,
-  imageLabel,
   parseBuildOrder,
   tokenizeNote,
   type BuildOrder,
@@ -15,7 +14,7 @@ import {
 import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
-import { foodSource, stepBuilding, stepLandmark, villagerFocus } from "./display";
+import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepLandmark, villagerFocus } from "./display";
 import { AGE_NAMES, BuildEngine, effectiveVillagerTargets, type EngineState } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { ageUpBuilders } from "./top";
@@ -56,6 +55,8 @@ interface Settings {
   readScreen: boolean;
   /** Traduire en français les consignes des BO écrits en anglais. */
   translate: boolean;
+  /** Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités des nouvelles civs). */
+  iconNames: boolean;
 }
 
 type VisionEvent =
@@ -283,7 +284,8 @@ async function pollGame() {
 }
 
 function refreshHeader() {
-  app.querySelector("header")?.replaceWith(header());
+  const saved = current();
+  app.querySelector("header")?.replaceWith(state.view === "play" && saved ? playHeader(saved) : header());
 }
 
 /** `keepError` : relance automatique, on garde la raison de l'arrêt affichée. */
@@ -399,9 +401,10 @@ function loadSettings(): Settings {
       apiKey: String(s.apiKey ?? ""),
       readScreen: s.readScreen !== false,
       translate: s.translate !== false,
+      iconNames: s.iconNames !== false,
     };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true, translate: true };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true };
   }
 }
 
@@ -749,22 +752,41 @@ function notes(lines: string[], className: string, translate: boolean): HTMLElem
   return list;
 }
 
-/** Consigne du BO : texte (traduit si besoin, « -> » en vraie flèche) et icônes du jeu. */
+/**
+ * Consigne du BO : texte (traduit si besoin, « -> » en vraie flèche) et icônes du jeu. Une
+ * icône peu connue (baies, bâtiment, unité d'une nouvelle civ) est suivie de son nom, sauf
+ * si le texte juste à côté le dit déjà.
+ */
 function noteParts(line: string, translate: boolean): (Node | string)[] {
-  return tokenizeNote(line).map((part) => {
-    if (part.kind === "image") return icon(part.path);
+  const parts = tokenizeNote(line).map((part) => {
+    if (part.kind === "image") return part;
     const text = part.text.replace(/->/g, "→");
     return translate ? translateText(text) : text;
   });
+  return parts.map((part, i) => {
+    if (typeof part === "string") return part;
+    const label = iconLabel(part.path);
+    const before = parts[i - 1];
+    const after = parts[i + 1];
+    const near = `${typeof before === "string" ? before.slice(-25) : ""} ${typeof after === "string" ? after.slice(0, 25) : ""}`;
+    const named =
+      state.settings.iconNames && !isWellKnownIcon(part.path) && !near.toLowerCase().includes(label.toLowerCase());
+    return icon(part.path, label, named);
+  });
 }
 
-function icon(path: string): HTMLElement {
+/** Icône d'une consigne ; son nom à côté (`named`) ou, si l'image ne charge pas, à sa place. */
+function icon(path: string, label: string, named: boolean): HTMLElement {
   const img = document.createElement("img");
   img.className = "icon";
   img.src = ICON_BASE + path;
-  img.alt = img.title = imageLabel(path);
-  img.onerror = () => img.replaceWith(h("span", "icon-text", imageLabel(path)));
-  return img;
+  img.alt = img.title = label;
+  if (!named) {
+    img.onerror = () => img.replaceWith(h("span", "icon-text", label));
+    return img;
+  }
+  img.onerror = () => img.remove();
+  return h("span", "named", img, h("span", "icon-name", label));
 }
 
 function showLibrary(civ = state.civ) {
@@ -936,6 +958,9 @@ function settingsView(): HTMLElement {
   const translate = document.createElement("input");
   translate.type = "checkbox";
   translate.checked = state.settings.translate;
+  const iconNames = document.createElement("input");
+  iconNames.type = "checkbox";
+  iconNames.checked = state.settings.iconNames;
   const message = h("p", "status");
 
   const save = button("Enregistrer", "Enregistrer les réglages", () => {
@@ -945,7 +970,13 @@ function settingsView(): HTMLElement {
       message.textContent = "Colle le lien de ton profil aoe4world.com/players/… ou son numéro.";
       return;
     }
-    saveSettings({ profileId, apiKey: apiKey.value.trim(), readScreen: readScreen.checked, translate: translate.checked });
+    saveSettings({
+      profileId,
+      apiKey: apiKey.value.trim(),
+      readScreen: readScreen.checked,
+      translate: translate.checked,
+      iconNames: iconNames.checked,
+    });
     showLibrary();
   });
   save.classList.add("primary");
@@ -962,6 +993,7 @@ function settingsView(): HTMLElement {
     h("label", "checkbox", readScreen, "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"),
     visionStatus(),
     h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
+    h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
     stepLog(),
     save,
     message,

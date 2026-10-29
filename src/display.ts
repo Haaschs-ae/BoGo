@@ -2,7 +2,7 @@
 
 import { imageLabel, type BuildOrderStep, type StepResources } from "./buildOrder";
 import { RESOURCES, type Resource, type Resources } from "./hud";
-import { translateText } from "./translate";
+import { translateTerm } from "./translate";
 
 export interface VillagerFocus {
   resource: Resource;
@@ -70,13 +70,50 @@ export function foodSource(step: BuildOrderStep): IconLabel | null {
 /** Premier bâtiment cité par l'étape (camp de bûcherons, maison…), en français. */
 export function stepBuilding(step: BuildOrderStep): IconLabel | null {
   const path = imagesOf(step).find((p) => p.startsWith("building_") && !p.endsWith("/farm.webp"));
-  return path ? { path, label: translateText(imageLabel(path)) } : null;
+  return path ? { path, label: iconLabel(path) } : null;
 }
 
 /** Landmark cité par l'étape (pour le passage d'âge). */
 export function stepLandmark(step: BuildOrderStep): IconLabel | null {
   const path = imagesOf(step).find((p) => p.startsWith("landmark_"));
-  return path ? { path, label: titleCase(imageLabel(path)) } : null;
+  return path ? { path, label: iconLabel(path) } : null;
+}
+
+/** Icônes que tout joueur reconnaît d'un coup d'œil : pas besoin d'écrire leur nom à côté. */
+export function isWellKnownIcon(path: string): boolean {
+  return /^(resource\/resource_(food|wood|gold|stone)|unit_worker\/villager[^/]*|age\/age_\d)\.webp$/.test(path);
+}
+
+/** Noms que le fichier ne donne pas (mot collé, verbe homonyme…). */
+const ICON_NAMES: Record<string, string> = {
+  ...FOOD_SOURCES,
+  "resource/resource_food.webp": "nourriture",
+  "resource/resource_wood.webp": "bois",
+  "resource/resource_gold.webp": "or",
+  "resource/resource_stone.webp": "pierre",
+  "resource/oliveoil.webp": "huile d'olive",
+  "resource/gaiatreeprototypetree.webp": "arbre",
+  "resource/wolf.webp": "loup",
+  "resource/relics.webp": "reliques",
+  "resource/repair.webp": "réparation",
+  "abilities/repair.webp": "réparation",
+  "building_defensive/keep.webp": "donjon",
+};
+
+const ROMAN = ["", "I", "II", "III", "IV"];
+
+/**
+ * Nom en français d'une icône du jeu (« baies », « camp de bûcherons »). Un nom inconnu
+ * (unité d'une nouvelle civ) reste en anglais ; un landmark garde son nom propre.
+ */
+export function iconLabel(path: string): string {
+  const known = ICON_NAMES[path];
+  if (known) return known;
+  if (path.startsWith("unit_worker/villager")) return "villageois";
+  const age = /^age\/age_(\d)\./.exec(path);
+  if (age) return `âge ${ROMAN[Number(age[1])] ?? age[1]}`;
+  const label = imageLabel(path);
+  return path.startsWith("landmark_") ? titleCase(label) : translateTerm(label);
 }
 
 function imagesOf(step: BuildOrderStep): string[] {

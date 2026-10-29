@@ -66,6 +66,7 @@ describe("tokenizeNote", () => {
 
 it("imageLabel donne un nom lisible", () => {
   expect(imageLabel("building_economy/mining_camp.webp")).toBe("mining camp");
+  expect(imageLabel("unit_cavalry/horseman-1.webp")).toBe("horseman");
 });
 
 it("décode les caractères encodés par aoe4guides (vu en partie : « 5 -&gt; »)", () => {

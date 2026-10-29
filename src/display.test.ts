@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrderStep, StepResources } from "./buildOrder";
-import { foodSource, stepBuilding, stepLandmark, villagerFocus } from "./display";
+import { foodSource, iconLabel, isWellKnownIcon, stepBuilding, stepLandmark, villagerFocus } from "./display";
 
 function step(res: Partial<StepResources>, notes: string[] = []): BuildOrderStep {
   return {
@@ -52,5 +52,33 @@ describe("icônes et libellés de l'étape", () => {
     expect(stepBuilding(steps[1])).toEqual({ path: "building_economy/lumber-camp.webp", label: "camp de bûcherons" });
     expect(stepLandmark(steps[2])).toEqual({ path: "landmark_english/council-hall.webp", label: "Council Hall" });
     expect(foodSource(steps[1])).toBeNull();
+  });
+});
+
+describe("noms des icônes (les icônes peu connues sont nommées à côté)", () => {
+  it.each([
+    ["resource/berrybush.webp", "baies"],
+    ["resource/sheep.webp", "moutons"],
+    ["building_economy/mill.webp", "moulin"],
+    ["building_economy/town-center.webp", "TC"],
+    ["building_defensive/palisade-wall.webp", "palissade"],
+    ["building_defensive/keep.webp", "donjon"],
+    ["unit_cavalry/horseman-1.webp", "cavalier"],
+    ["unit_infantry/man-at-arms-1.webp", "homme d'armes"],
+    ["technology_economy/wheelbarrow.webp", "brouette"],
+    ["landmark_english/abbey-of-kings.webp", "Abbey Of Kings"],
+    ["unit_golden_horde/kharash.webp", "kharash"],
+    ["age/age_2.webp", "âge II"],
+    ["unit_worker/villager-china.webp", "villageois"],
+  ])("%s → %s", (path, label) => {
+    expect(iconLabel(path)).toBe(label);
+  });
+
+  it("ne nomme pas les ressources de base, les villageois ni les âges", () => {
+    expect(isWellKnownIcon("resource/resource_gold.webp")).toBe(true);
+    expect(isWellKnownIcon("unit_worker/villager-japanese.webp")).toBe(true);
+    expect(isWellKnownIcon("age/age_3.webp")).toBe(true);
+    expect(isWellKnownIcon("resource/berrybush.webp")).toBe(false);
+    expect(isWellKnownIcon("unit_worker/trader.webp")).toBe(false);
   });
 });

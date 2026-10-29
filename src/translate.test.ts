@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrder } from "./buildOrder";
-import { looksEnglish, translateText } from "./translate";
+import { looksEnglish, translateTerm, translateText } from "./translate";
 
 describe("translateText (consignes réelles du BO « English 2 TC defensive »)", () => {
   it.each([
@@ -63,5 +63,14 @@ describe("looksEnglish", () => {
 
   it("laisse un BO déjà en français (« or » y veut dire l'or)", () => {
     expect(looksEnglish(bo(["6 villageois aux moutons", "Construis une maison puis envoie 3 au bois et 2 à l'or"]))).toBe(false);
+  });
+});
+
+describe("translateTerm (noms d'icônes)", () => {
+  it("traduit un nom connu et laisse un nom inconnu en anglais", () => {
+    expect(translateTerm("lumber camp")).toBe("camp de bûcherons");
+    expect(translateTerm("house")).toBe("maison");
+    expect(translateTerm("stone wall tower")).toBe("stone wall tower");
+    expect(translateTerm("kharash")).toBe("kharash");
   });
 });

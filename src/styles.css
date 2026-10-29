@@ -119,6 +119,16 @@ main {
   color: var(--accent);
 }
 
+/* Icône peu connue suivie de son nom : « [icône] baies », sans coupure entre les deux. */
+.named {
+  white-space: nowrap;
+}
+
+.icon-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
 .hint {
   color: var(--muted);
   font-size: 11px;
