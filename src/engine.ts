@@ -123,8 +123,10 @@ export interface EngineState {
 
 const CONFIRM_READINGS = 2;
 const MISPLACEMENT_SECONDS = 3;
-/** Après un changement d'étape, le joueur a le temps d'envoyer ses villageois avant toute alerte. */
-const MISPLACEMENT_GRACE_SECONDS = 12;
+/** Étape qui demande de déplacer des villageois (« 3 des moutons vers l'or ») : le temps de le
+ *  faire avant l'alerte. Une erreur ordinaire (point de ralliement oublié) n'attend pas : chaque
+ *  seconde compte avant un 2e TC ou un passage d'âge. */
+const MOVE_GRACE_SECONDS = 6;
 const SPEND_RATIO = 0.75;
 /** Le TC peut coûter moins cher après certaines technologies : seuil plus bas. */
 const TC_SPEND_RATIO = 0.6;
@@ -385,9 +387,7 @@ export class BuildEngine {
     // Même règle que le bloc « Prochain villageois » : le premier déplacement prévu, plafonné à
     // ce qui manque à la destination ; les bâtisseurs prévus récoltent en attendant.
     const move = plannedMoves(this.steps[this.index].resources, reading.gatherers)[0];
-    // Pas d'alerte juste après un changement d'étape : le temps d'envoyer les villageois.
-    const justEntered = now - (this.enteredAt ?? now) < MISPLACEMENT_GRACE_SECONDS * 1000;
-    if (!move || justEntered) {
+    if (!move) {
       this.misplacedSince = null;
       return null;
     }
@@ -395,7 +395,18 @@ export class BuildEngine {
     const key = `${move.from}>${move.to}`;
     if (this.misplacedSince?.key !== key) this.misplacedSince = { key, at: now };
     if (now - this.misplacedSince.at < MISPLACEMENT_SECONDS * 1000) return null;
+    if (this.asksToMove(move.from) && now - (this.enteredAt ?? now) < MOVE_GRACE_SECONDS * 1000) return null;
     return move;
+  }
+
+  /** L'étape baisse la cible de cette ressource par rapport à avant : des villageois doivent en partir. */
+  private asksToMove(resource: Resource): boolean {
+    const target = this.steps[this.index].resources[resource];
+    for (let i = this.index - 1; i >= 0; i--) {
+      const before = this.steps[i].resources[resource];
+      if (before >= 0) return target >= 0 && target < before;
+    }
+    return false;
   }
 }
 

@@ -276,15 +276,15 @@ describe("BuildEngine", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(1);
     // Étape 2 : 6 nourriture + 3 bois = 9. Un 10e villageois, mais 9 à la nourriture et 1 au bois.
-    // 12 s pour envoyer ses villageois après le changement d'étape, puis 3 s d'écart qui dure.
-    let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 16);
+    // Erreur ordinaire : alerte dès que l'écart dure 3 s, sans autre délai.
+    let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 4);
     expect(state.villagers).toBe(10);
     expect(state.index).toBe(1);
     // 3 de trop à la nourriture, mais il n'en manque que 2 au bois : « envoies-en 2 ».
     expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 2, excess: 3 });
     expect(state.drift).toBe(1);
     // Le joueur corrige : on avance.
-    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 20000);
+    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 5000);
     expect(state.index).toBe(2);
     // Décroché du BO (attaque, choix du joueur) : BoGo reste et propose ⌘⌥→ (drift).
     const lost = new BuildEngine(steps, "English");
@@ -300,20 +300,31 @@ describe("BuildEngine", () => {
     const engine = new BuildEngine(withBuilders, "English");
     expect(feed(engine, reading({ food: 7, wood: 4 }), 0, 5).misplacement).toBeNull();
     // Au-delà des bâtisseurs prévus, l'alerte revient.
-    expect(feed(engine, reading({ food: 9, wood: 8 }), 15000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3, excess: 3 });
+    expect(feed(engine, reading({ food: 9, wood: 8 }), 5000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3, excess: 3 });
   });
 
   it("signale un villageois en trop sur une ressource s'il y reste", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(1);
-    // Étape 2 : 6 nourriture, 3 bois. Le 8e part aux moutons au lieu du bois.
-    // Pas d'alerte pendant les 12 s qui suivent le changement d'étape, ni avant 3 s d'écart.
-    let state = feed(engine, reading({ food: 7, wood: 1 }), 0, 13);
+    // Étape 2 : 6 nourriture, 3 bois. Le 8e part aux moutons au lieu du bois (ralliement oublié) :
+    // alerte au bout de 3 s d'écart, même juste après le changement d'étape.
+    let state = feed(engine, reading({ food: 7, wood: 1 }), 0, 2);
     expect(state.misplacement).toBeNull();
-    state = feed(engine, reading({ food: 7, wood: 1 }), 13000, 3);
+    state = feed(engine, reading({ food: 7, wood: 1 }), 2000, 2);
     expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 1, excess: 1 });
-    state = feed(engine, reading({ food: 6, wood: 2 }), 16000, 1);
+    state = feed(engine, reading({ food: 6, wood: 2 }), 5000, 1);
     expect(state.misplacement).toBeNull();
+  });
+
+  it("laisse 6 s pour une étape qui demande de déplacer des villageois", () => {
+    // 9 aux moutons, puis « 3 des moutons vers l'or » : 3 de trop aux moutons, c'est normal au début.
+    const moving = [step(12, { food: 9, wood: 3 }), step(12, { food: 6, wood: 3, gold: 3 })];
+    const engine = new BuildEngine(moving, "English");
+    engine.setStep(1);
+    let state = feed(engine, reading({ food: 9, wood: 3 }), 0, 5);
+    expect(state.misplacement).toBeNull();
+    state = feed(engine, reading({ food: 9, wood: 3 }), 5000, 2);
+    expect(state.misplacement).toEqual({ from: "food", to: "gold", count: 3, excess: 3 });
   });
 });
 
