@@ -132,18 +132,14 @@ fn stop_vision(vision: State<Vision>) {
     }
 }
 
-/// Réapplique régulièrement le maintien au premier plan (appelé par l'interface) :
-/// macOS peut repasser GeForce Now devant en changeant de bureau ou de plein écran.
+/// Appelé régulièrement par l'interface : ramène l'overlay devant le jeu,
+/// macOS pouvant repasser GeForce Now devant en changeant de bureau ou de plein écran.
 #[tauri::command]
 fn keep_overlay_on_top(app: AppHandle) {
     #[cfg(target_os = "macos")]
     {
         let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            if let Some(window) = handle.get_webview_window("overlay") {
-                let _ = macos::float_over_fullscreen(&window);
-            }
-        });
+        let _ = app.run_on_main_thread(move || macos::bring_to_front(&handle));
     }
     #[cfg(not(target_os = "macos"))]
     let _ = app;
@@ -157,7 +153,10 @@ fn quit(app: AppHandle, vision: State<Vision>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(Vision::default())
         .invoke_handler(tauri::generate_handler![
@@ -175,9 +174,7 @@ pub fn run() {
                 // Appli « accessoire » : pas d'icône dans le Dock, et ses fenêtres
                 // peuvent s'afficher dans l'espace plein écran d'une autre appli.
                 _app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                if let Some(window) = _app.get_webview_window("overlay") {
-                    macos::float_over_fullscreen(&window)?;
-                }
+                macos::float_over_fullscreen(_app.handle())?;
             }
             Ok(())
         })
@@ -187,37 +184,45 @@ pub fn run() {
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use objc2::{msg_send, runtime::AnyObject};
+    use tauri::{AppHandle, Manager};
+    use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
 
-    // Valeurs de NSWindowCollectionBehavior (AppKit).
-    const CAN_JOIN_ALL_SPACES: usize = 1 << 0;
-    const STATIONARY: usize = 1 << 4;
-    const IGNORES_CYCLE: usize = 1 << 6;
-    const FULL_SCREEN_AUXILIARY: usize = 1 << 8;
-
-    #[link(name = "CoreGraphics", kind = "framework")]
-    extern "C" {
-        /// Niveau de la fenêtre qu'une appli en plein écran exclusif place devant tout le reste.
-        fn CGShieldingWindowLevel() -> i32;
+    tauri_panel! {
+        panel!(OverlayPanel {
+            config: {
+                can_become_key_window: true,
+                is_floating_panel: true
+            }
+        })
     }
 
-    /// Garde l'overlay visible par-dessus GeForce Now en plein écran : présent sur tous les
-    /// bureaux, y compris celui d'une appli en plein écran, au-dessus du niveau de capture d'écran.
-    /// S'il est affiché, il est ramené devant sans prendre le clavier.
-    pub fn float_over_fullscreen(window: &tauri::WebviewWindow) -> tauri::Result<()> {
-        let ns_window = window.ns_window()? as *mut AnyObject;
-        unsafe {
-            let _: () = msg_send![
-                ns_window,
-                setCollectionBehavior: CAN_JOIN_ALL_SPACES | STATIONARY | IGNORES_CYCLE | FULL_SCREEN_AUXILIARY
-            ];
-            let level = CGShieldingWindowLevel() as isize + 1;
-            let _: () = msg_send![ns_window, setLevel: level];
-            let visible: bool = msg_send![ns_window, isVisible];
-            if visible {
-                let _: () = msg_send![ns_window, orderFrontRegardless];
+    /// Transforme l'overlay en NSPanel non activant : présent sur tous les bureaux, y compris
+    /// celui de GeForce Now en plein écran, au-dessus du jeu, sans lui voler le focus.
+    /// À appeler sur le fil principal.
+    pub fn float_over_fullscreen(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+        let window = app.get_webview_window("overlay").ok_or("fenêtre overlay introuvable")?;
+        let panel = window.to_panel::<OverlayPanel>()?;
+        panel.set_level(PanelLevel::ScreenSaver.value());
+        panel
+            .add_style_mask(StyleMask::empty().nonactivating_panel().into())
+            .map_err(|e| format!("{e:?}"))?;
+        panel.set_collection_behavior(
+            CollectionBehavior::new()
+                .can_join_all_spaces()
+                .full_screen_auxiliary()
+                .stationary()
+                .ignores_cycle()
+                .into(),
+        );
+        Ok(())
+    }
+
+    /// Ramène l'overlay devant le jeu s'il est affiché. À appeler sur le fil principal.
+    pub fn bring_to_front(app: &AppHandle) {
+        if let Ok(panel) = app.get_webview_panel("overlay") {
+            if panel.is_visible() {
+                panel.order_front_regardless();
             }
         }
-        Ok(())
     }
 }
