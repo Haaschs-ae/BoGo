@@ -163,7 +163,7 @@ La compilation de l'appli Mac est faite par GitHub Actions (`.github/workflows/b
 
 ## Contenus tiers
 
-- **Code de BoGo** : voir le fichier LICENSE (à venir : le choix de la licence est en cours).
+- **Code de BoGo** : licence MIT (fichier LICENSE), © 2026 Haaschs.
 - **Visuels et données d'Age of Empires IV** (drapeaux des civilisations dans `src/assets/flags`,
   icônes du jeu chargées depuis le site de RTS Overlay, captures du HUD dans `docs/assets`,
   coûts dans `src/data/costs.json` dérivés d'aoe4world/data) : © Microsoft Corporation. Ils ne
