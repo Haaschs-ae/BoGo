@@ -305,3 +305,15 @@ body.locked #app {
 .settings .primary {
   align-self: flex-start;
 }
+
+.chip.live {
+  color: #4cd17a;
+  border-color: rgba(76, 209, 122, 0.4);
+}
+
+.settings label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}

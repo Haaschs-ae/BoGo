@@ -37,6 +37,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - run: scripts/build-vision.sh
       # Universelle : marche sur les Mac Apple Silicon et Intel.
       - run: npx tauri build --target universal-apple-darwin
       - uses: actions/upload-artifact@v4

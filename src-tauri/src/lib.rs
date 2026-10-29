@@ -1,3 +1,8 @@
+use std::io::{BufRead, BufReader};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, State};
+
 /// Télécharge un BO aoe4guides au format overlay (celui de RTS_Overlay).
 #[tauri::command]
 async fn fetch_aoe4guides_build(id: String) -> Result<serde_json::Value, String> {
@@ -37,8 +42,57 @@ async fn get_json(site: &str, url: &str) -> Result<serde_json::Value, String> {
         .map_err(|e| format!("Réponse de {site} illisible : {e}"))
 }
 
+/// Processus bogo-vision en cours (lecture de l'horloge à l'écran).
+#[derive(Default)]
+struct Vision(Mutex<Option<Child>>);
+
+/// Lance bogo-vision et relaie chacune de ses lignes JSON à l'interface (événement « vision »).
 #[tauri::command]
-fn quit(app: tauri::AppHandle) {
+fn start_vision(app: AppHandle, vision: State<Vision>) -> Result<(), String> {
+    let mut running = vision.0.lock().map_err(|e| e.to_string())?;
+    if let Some(child) = running.as_mut() {
+        if matches!(child.try_wait(), Ok(None)) {
+            return Ok(());
+        }
+    }
+    if !cfg!(target_os = "macos") {
+        return Err("La lecture de l'écran n'existe que sur macOS pour l'instant.".into());
+    }
+    // Tauri place les binaires externes à côté de l'exécutable de l'appli.
+    let helper = std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .with_file_name("bogo-vision");
+    let mut child = Command::new(&helper)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Impossible de lancer la lecture de l'écran ({}) : {e}", helper.display()))?;
+    let stdout = child.stdout.take().ok_or("Sortie de bogo-vision indisponible.")?;
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) {
+                let _ = app.emit("vision", event);
+            }
+        }
+        let _ = app.emit("vision", serde_json::json!({ "type": "stopped" }));
+    });
+    *running = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_vision(vision: State<Vision>) {
+    if let Ok(mut running) = vision.0.lock() {
+        if let Some(mut child) = running.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+#[tauri::command]
+fn quit(app: AppHandle, vision: State<Vision>) {
+    stop_vision(vision);
     app.exit(0);
 }
 
@@ -46,7 +100,14 @@ fn quit(app: tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![fetch_aoe4guides_build, fetch_last_game, quit])
+        .manage(Vision::default())
+        .invoke_handler(tauri::generate_handler![
+            fetch_aoe4guides_build,
+            fetch_last_game,
+            start_vision,
+            stop_vision,
+            quit
+        ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]
             {

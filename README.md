@@ -41,6 +41,12 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
 - **Choisir** : filtre par civ et par style, puis ▶ sur le BO voulu.
 - **Pendant la partie** : l'étape en cours (villageois visés, répartition par
   ressource, âge, temps visé), ses consignes et un aperçu de la suivante.
+- **Horloge du jeu** : BoGo lit l'horloge en haut de l'écran dans la fenêtre GeForce
+  Now (macOS 14 ou plus). Si le BO indique un temps pour chaque étape, il avance tout
+  seul ; un changement d'étape au clavier reste pris en compte jusqu'à l'étape
+  suivante du BO. Au premier lancement, macOS demande d'autoriser BoGo dans
+  **Réglages Système → Confidentialité et sécurité → Enregistrement de l'écran**,
+  puis de relancer BoGo. L'option se coupe dans les réglages (⚙).
 
 | Raccourci | Action |
 |-----------|--------|
@@ -83,7 +89,7 @@ Le calibrage des zones à lire est dans [docs/hud-calibration.md](docs/hud-calib
   bibliothèque de BO importés depuis aoe4guides, rangés par civ et par style,
   étapes au clavier.
 - **Étape 2** : détection de la partie et des civs via AoE4World, proposition des
-  BO pour ta civ (fait), BO calé sur l'horloge du jeu lue à l'écran (à venir).
+  BO pour ta civ, BO calé sur l'horloge du jeu lue à l'écran (fait, à valider en jeu).
 - **Étape 3** : avancement automatique selon les villageois par ressource.
 - **Ensuite** : version autonome, qui démarre avec le Mac et s'ouvre seule quand
   une partie commence.
@@ -92,8 +98,9 @@ Le calibrage des zones à lire est dans [docs/hud-calibration.md](docs/hud-calib
 
 ```bash
 npm install
-npm test            # tests de la logique (format des BO, bibliothèque)
-npm run tauri dev   # lance l'appli en local (Rust + Node requis)
+npm test                  # tests de la logique (format des BO, AoE4World, horloge)
+scripts/build-vision.sh   # compile bogo-vision, la lecture de l'écran (macOS, Xcode requis)
+npm run tauri dev         # lance l'appli en local (Rust + Node requis)
 ```
 
 La compilation de l'appli Mac est faite par GitHub Actions (`.github/workflows/build.yml`).

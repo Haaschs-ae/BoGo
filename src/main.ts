@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
@@ -12,6 +13,7 @@ import {
   type BuildOrderStep,
 } from "./buildOrder";
 import { CIVILIZATIONS } from "./civs";
+import { ClockTracker, formatClock, stepForClock } from "./clock";
 import {
   addBuild,
   filterBuilds,
@@ -43,7 +45,22 @@ const POLL_SECONDS = 10;
 interface Settings {
   profileId: string;
   apiKey: string;
+  /** Lire l'horloge du jeu dans la fenêtre GeForce Now. */
+  readScreen: boolean;
 }
+
+type VisionEvent =
+  | { type: "clock"; seconds: number; text: string }
+  | { type: "status"; code: "ok" | "no_window" | "no_clock" }
+  | { type: "error"; code: string; message: string }
+  | { type: "stopped" };
+
+const VISION_STATUS: Record<string, string> = {
+  ok: "Horloge du jeu lue.",
+  no_window: "Fenêtre GeForce Now introuvable : lance-la, en plein écran de préférence.",
+  no_clock: "GeForce Now trouvé, mais pas d'horloge à l'écran (pas encore en partie ?).",
+  stopped: "Lecture de l'écran arrêtée.",
+};
 
 interface State {
   view: "library" | "play" | "settings";
@@ -59,6 +76,9 @@ interface State {
   gameError: string | null;
   /** Dernière partie pour laquelle on a déjà proposé les BO. */
   handledGameId: number | null;
+  vision: { status: string; error: string | null };
+  /** Dernière étape choisie d'après l'horloge : on ne la réimpose pas si le joueur a changé d'étape à la main. */
+  autoStep: number | null;
 }
 
 const state: State = {
@@ -74,7 +94,10 @@ const state: State = {
   game: null,
   gameError: null,
   handledGameId: null,
+  vision: { status: "", error: null },
+  autoStep: null,
 };
+const clock = new ClockTracker();
 restoreSession();
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -85,6 +108,8 @@ render();
 registerHotkeys();
 pollGame();
 setInterval(pollGame, POLL_SECONDS * 1000);
+listen<VisionEvent>("vision", (event) => onVision(event.payload));
+if (state.settings.readScreen) startVision();
 
 document.addEventListener("keydown", (e) => {
   if (state.view !== "play" || e.target instanceof HTMLTextAreaElement) return;
@@ -107,6 +132,7 @@ function goToStep(step: number) {
 function play(id: string) {
   state.currentId = id;
   state.step = 0;
+  state.autoStep = null;
   state.view = "play";
   saveSession();
   render();
@@ -182,23 +208,70 @@ async function pollGame() {
     state.gameError = err instanceof Error ? err.message : String(err);
   }
   // Sans nouvelle partie, on ne rafraîchit que l'en-tête pour ne pas effacer une saisie en cours.
+  refreshHeader();
+}
+
+function refreshHeader() {
   app.querySelector("header")?.replaceWith(header());
+}
+
+async function startVision() {
+  state.vision = { status: "", error: null };
+  try {
+    await invoke("start_vision");
+  } catch (err) {
+    state.vision.error = err instanceof Error ? err.message : String(err);
+    refreshHeader();
+  }
+}
+
+function onVision(event: VisionEvent) {
+  if (event.type === "clock") {
+    if (clock.read(event.seconds, Date.now()) === null) return;
+    const build = current();
+    const target = build ? stepForClock(build.build.build_order, event.seconds) : null;
+    if (target !== null && target !== state.autoStep) {
+      state.autoStep = target;
+      state.step = target;
+      saveSession();
+    }
+    // La vue de jeu n'a pas de champ de saisie : on peut la redessiner chaque seconde.
+    if (state.view === "play") render();
+    else updateVisionStatus();
+    return;
+  }
+  if (event.type === "error") state.vision.error = event.message;
+  else if (event.type === "status") state.vision = { status: event.code, error: null };
+  // Après une erreur (autorisation manquante…), l'arrêt garde le message d'erreur.
+  else state.vision.status = "stopped";
+  if (state.view === "play") render();
+  else updateVisionStatus();
+}
+
+function updateVisionStatus() {
+  document.querySelector("#vision-status")?.replaceWith(visionStatus());
 }
 
 function loadSettings(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
-    return { profileId: String(s.profileId ?? ""), apiKey: String(s.apiKey ?? "") };
+    return { profileId: String(s.profileId ?? ""), apiKey: String(s.apiKey ?? ""), readScreen: s.readScreen !== false };
   } catch {
-    return { profileId: "", apiKey: "" };
+    return { profileId: "", apiKey: "", readScreen: true };
   }
 }
 
 function saveSettings(settings: Settings) {
+  const wasReading = state.settings.readScreen;
   state.settings = settings;
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   state.handledGameId = null;
   pollGame();
+  if (settings.readScreen && !wasReading) startVision();
+  if (!settings.readScreen && wasReading) {
+    invoke("stop_vision");
+    state.vision = { status: "", error: null };
+  }
 }
 
 function saveSession() {
@@ -250,9 +323,18 @@ function playView(saved: SavedBuild): HTMLElement {
   const step = steps[state.step];
   const next = steps[state.step + 1];
 
+  const gameTime = clock.current(Date.now());
+  const followsClock = stepForClock(steps, 0) !== null;
+  const count = h("span", "bo-count", `${state.step + 1}/${steps.length}`);
+  if (gameTime !== null) {
+    const live = h("span", "chip live", `⏱ ${formatClock(gameTime)}`);
+    live.title = followsClock ? "Horloge du jeu : le BO avance tout seul" : "Horloge du jeu";
+    count.prepend(live, " ");
+  }
+
   const view = h("main", "play");
   view.append(
-    h("div", "bo-title", h("span", "bo-name", saved.build.name), h("span", "bo-count", `${state.step + 1}/${steps.length}`)),
+    h("div", "bo-title", h("span", "bo-name", saved.build.name), count),
     targets(step),
     notes(step.notes, "notes"),
   );
@@ -263,7 +345,8 @@ function playView(saved: SavedBuild): HTMLElement {
   const nextBtn = button("▶", "Étape suivante", () => goToStep(state.step + 1));
   prev.disabled = state.step === 0;
   nextBtn.disabled = !next;
-  nav.append(prev, h("span", "hint", "⌘⌥← / ⌘⌥→"), nextBtn);
+  const navHint = gameTime !== null && !followsClock ? "Pas de temps dans ce BO : ⌘⌥← / ⌘⌥→" : "⌘⌥← / ⌘⌥→";
+  nav.append(prev, h("span", "hint", navHint), nextBtn);
   view.append(nav);
   return view;
 }
@@ -365,6 +448,20 @@ function libraryView(): HTMLElement {
   return view;
 }
 
+function visionStatus(): HTMLElement {
+  const status = h("p", state.vision.error ? "status error" : "status", visionText());
+  status.id = "vision-status";
+  return status;
+}
+
+function visionText(): string {
+  if (!state.settings.readScreen) return "";
+  if (state.vision.error) return state.vision.error;
+  const time = clock.current(Date.now());
+  if (time !== null) return `Horloge du jeu lue : ${formatClock(time)}.`;
+  return VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
+}
+
 function gameStatus(): HTMLElement {
   const dot = h("span", "status-dot");
   if (state.gameError) {
@@ -398,6 +495,9 @@ function settingsView(): HTMLElement {
   const apiKey = document.createElement("input");
   apiKey.value = state.settings.apiKey;
   apiKey.placeholder = "Facultative";
+  const readScreen = document.createElement("input");
+  readScreen.type = "checkbox";
+  readScreen.checked = state.settings.readScreen;
   const message = h("p", "status");
 
   const save = button("Enregistrer", "Enregistrer les réglages", () => {
@@ -407,7 +507,7 @@ function settingsView(): HTMLElement {
       message.textContent = "Colle le lien de ton profil aoe4world.com/players/… ou son numéro.";
       return;
     }
-    saveSettings({ profileId, apiKey: apiKey.value.trim() });
+    saveSettings({ profileId, apiKey: apiKey.value.trim(), readScreen: readScreen.checked });
     state.view = "library";
     render();
   });
@@ -422,6 +522,8 @@ function settingsView(): HTMLElement {
       "La clé sert à détecter aussi les parties personnalisées. Connecté sur aoe4world.com, ouvre " +
         "aoe4world.com/account/profile_token et copie la valeur de « api_key ».",
     ),
+    h("label", "checkbox", readScreen, "Lire l'horloge du jeu dans GeForce Now (le BO avance tout seul)"),
+    visionStatus(),
     save,
     message,
     h("p", "hint", HOTKEY_HINT),
