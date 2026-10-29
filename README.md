@@ -8,6 +8,9 @@ la partie.
 Cible : **macOS, avec AoE4 joué sur GeForce Now** (appli GeForce Now en plein écran).
 L'appli est faite avec [Tauri](https://tauri.app) et pourra aussi tourner sous Windows.
 
+Présentation en images : [docs/visuels](docs/visuels) (couverture, choix du BO, matchups, deux
+modes, coach contre l'IA, réglages, fair-play).
+
 ## Installer et tester
 
 1. Ouvre l'onglet **Actions** du repo, puis la dernière exécution réussie de **Build**.
