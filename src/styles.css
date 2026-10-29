@@ -246,3 +246,62 @@ body.locked .nav button {
 body.locked #app {
   border-color: transparent;
 }
+
+/* ---------- Partie détectée et réglages ---------- */
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  vertical-align: middle;
+}
+
+.status-dot.live {
+  background: #4cd17a;
+}
+
+.status-dot.error {
+  background: var(--danger);
+}
+
+.game-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: rgba(242, 182, 50, 0.08);
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 6px;
+  user-select: text;
+}
+
+.settings .primary {
+  align-self: flex-start;
+}

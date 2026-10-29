@@ -24,8 +24,17 @@ L'appli est faite avec [Tauri](https://tauri.app) et pourra aussi tourner sous W
 
 BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕ la ferme.
 
-## Utilisation (étape 1)
+## Utilisation
 
+- **Premier lancement** : colle le lien de ton profil `aoe4world.com/players/…` dans les
+  réglages (⚙). La clé API AoE4World est facultative : elle sert à détecter aussi les
+  parties personnalisées (connecté sur aoe4world.com, ouvre
+  `aoe4world.com/account/profile_token` et copie la valeur de `api_key`).
+- **Détection de la partie** : toutes les 10 secondes, BoGo demande à AoE4World ta
+  dernière partie. Quand une nouvelle partie commence, le point vert s'allume dans
+  l'en-tête et la bibliothèque se filtre sur ta civ, avec un bandeau
+  « Ta civ contre la civ adverse ». AoE4World voit la partie quelques secondes après
+  son lancement.
 - **Importer un BO** : colle un lien `aoe4guides.com/builds/…` et choisis son style
   (Boom, Agressif, Fast Castle, Autre). Si le téléchargement échoue, colle à la place
   le JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
@@ -74,7 +83,7 @@ Le calibrage des zones à lire est dans [docs/hud-calibration.md](docs/hud-calib
   bibliothèque de BO importés depuis aoe4guides, rangés par civ et par style,
   étapes au clavier.
 - **Étape 2** : détection de la partie et des civs via AoE4World, proposition des
-  BO pour ta civ, BO calé sur l'horloge du jeu lue à l'écran.
+  BO pour ta civ (fait), BO calé sur l'horloge du jeu lue à l'écran (à venir).
 - **Étape 3** : avancement automatique selon les villageois par ressource.
 - **Ensuite** : version autonome, qui démarre avec le Mac et s'ouvre seule quand
   une partie commence.

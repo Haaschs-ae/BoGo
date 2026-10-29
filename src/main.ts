@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
+import { extractProfileId, fetchLastGame, kindLabel, type DetectedGame } from "./aoe4world";
 import {
   civilizationsOf,
   imageLabel,
@@ -32,10 +33,20 @@ const HOTKEYS = {
   toggle: "CommandOrControl+Alt+B",
 };
 
+const HOTKEY_HINT = "⌘⌥←/→ étapes · ⌘⌥L verrouiller · ⌘⌥B afficher/masquer";
+
 const SESSION_KEY = "bogo.session.v1";
+const SETTINGS_KEY = "bogo.settings.v1";
+// AoE4World voit une partie quelques secondes après son lancement : inutile d'interroger plus souvent.
+const POLL_SECONDS = 10;
+
+interface Settings {
+  profileId: string;
+  apiKey: string;
+}
 
 interface State {
-  view: "library" | "play";
+  view: "library" | "play" | "settings";
   library: SavedBuild[];
   civ: string;
   style: Style | "";
@@ -43,6 +54,11 @@ interface State {
   step: number;
   locked: boolean;
   importStatus: { text: string; error: boolean } | null;
+  settings: Settings;
+  game: DetectedGame | null;
+  gameError: string | null;
+  /** Dernière partie pour laquelle on a déjà proposé les BO. */
+  handledGameId: number | null;
 }
 
 const state: State = {
@@ -54,14 +70,21 @@ const state: State = {
   step: 0,
   locked: false,
   importStatus: null,
+  settings: loadSettings(),
+  game: null,
+  gameError: null,
+  handledGameId: null,
 };
 restoreSession();
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const appWindow = getCurrentWindow();
 
+if (!state.settings.profileId) state.view = "settings";
 render();
 registerHotkeys();
+pollGame();
+setInterval(pollGame, POLL_SECONDS * 1000);
 
 document.addEventListener("keydown", (e) => {
   if (state.view !== "play" || e.target instanceof HTMLTextAreaElement) return;
@@ -138,6 +161,46 @@ async function importBuild(input: string, style: Style) {
   render();
 }
 
+async function pollGame() {
+  const { profileId, apiKey } = state.settings;
+  if (!profileId) return;
+  try {
+    const game = await fetchLastGame(profileId, apiKey);
+    state.gameError = null;
+    state.game = game;
+    if (game?.ongoing && game.id !== state.handledGameId) {
+      // Nouvelle partie : on propose les BO de la civ jouée.
+      state.handledGameId = game.id;
+      state.civ = game.myCivilization;
+      state.style = "";
+      state.view = "library";
+      saveSession();
+      render();
+      return;
+    }
+  } catch (err) {
+    state.gameError = err instanceof Error ? err.message : String(err);
+  }
+  // Sans nouvelle partie, on ne rafraîchit que l'en-tête pour ne pas effacer une saisie en cours.
+  app.querySelector("header")?.replaceWith(header());
+}
+
+function loadSettings(): Settings {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
+    return { profileId: String(s.profileId ?? ""), apiKey: String(s.apiKey ?? "") };
+  } catch {
+    return { profileId: "", apiKey: "" };
+  }
+}
+
+function saveSettings(settings: Settings) {
+  state.settings = settings;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  state.handledGameId = null;
+  pollGame();
+}
+
 function saveSession() {
   localStorage.setItem(SESSION_KEY, JSON.stringify({ currentId: state.currentId, step: state.step, civ: state.civ }));
 }
@@ -160,18 +223,21 @@ function restoreSession() {
 
 function render() {
   document.body.classList.toggle("locked", state.locked);
-  app.replaceChildren(header(), state.view === "play" && current() ? playView(current()!) : libraryView());
+  const body =
+    state.view === "settings" ? settingsView() : state.view === "play" && current() ? playView(current()!) : libraryView();
+  app.replaceChildren(header(), body);
 }
 
 function header(): HTMLElement {
   const bar = h("header", "bar");
   bar.dataset.tauriDragRegion = "";
-  const title = h("span", "title", "BoGo");
+  const title = h("span", "title", "BoGo", gameStatus());
   title.dataset.tauriDragRegion = "";
   const actions = h("div", "actions");
   if (state.view === "play") actions.append(button("📚", "Bibliothèque", () => ((state.view = "library"), render())));
   else if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
   actions.append(
+    button("⚙", "Réglages", () => ((state.view = state.view === "settings" ? "library" : "settings"), render())),
     button(state.locked ? "🔒" : "🔓", "Verrouiller (clics transmis au jeu)", () => setLocked(!state.locked)),
     button("✕", "Quitter BoGo", () => invoke("quit")),
   );
@@ -249,6 +315,7 @@ function icon(path: string): HTMLElement {
 
 function libraryView(): HTMLElement {
   const view = h("main", "library");
+  if (state.game?.ongoing) view.append(gameBanner(state.game));
 
   const civSelect = select(
     [["", "Toutes les civs"], ...CIVILIZATIONS.map((c): [string, string] => [c, c])],
@@ -294,7 +361,75 @@ function libraryView(): HTMLElement {
   if (state.importStatus) {
     form.append(h("p", state.importStatus.error ? "status error" : "status", state.importStatus.text));
   }
-  view.append(form, h("p", "hint", "⌘⌥←/→ étapes · ⌘⌥L verrouiller · ⌘⌥B afficher/masquer"));
+  view.append(form, h("p", "hint", HOTKEY_HINT));
+  return view;
+}
+
+function gameStatus(): HTMLElement {
+  const dot = h("span", "status-dot");
+  if (state.gameError) {
+    dot.classList.add("error");
+    dot.title = state.gameError;
+  } else if (state.game?.ongoing) {
+    dot.classList.add("live");
+    dot.title = "Partie en cours détectée";
+  } else {
+    dot.title = state.settings.profileId ? "Aucune partie en cours" : "Profil AoE4World non renseigné";
+  }
+  return dot;
+}
+
+function gameBanner(game: DetectedGame): HTMLElement {
+  const details = [kindLabel(game.kind), game.map].filter(Boolean).join(" · ");
+  const versus = game.opponentCivilizations.length ? ` contre ${game.opponentCivilizations.join(", ")}` : "";
+  return h(
+    "div",
+    "game-banner",
+    h("strong", "", `${game.myCivilization}${versus}`),
+    h("span", "build-meta", `Partie détectée · ${details}`),
+  );
+}
+
+function settingsView(): HTMLElement {
+  const view = h("main", "settings");
+  const profile = document.createElement("input");
+  profile.value = state.settings.profileId;
+  profile.placeholder = "Lien aoe4world.com/players/… ou identifiant";
+  const apiKey = document.createElement("input");
+  apiKey.value = state.settings.apiKey;
+  apiKey.placeholder = "Facultative";
+  const message = h("p", "status");
+
+  const save = button("Enregistrer", "Enregistrer les réglages", () => {
+    const profileId = extractProfileId(profile.value);
+    if (!profileId) {
+      message.className = "status error";
+      message.textContent = "Colle le lien de ton profil aoe4world.com/players/… ou son numéro.";
+      return;
+    }
+    saveSettings({ profileId, apiKey: apiKey.value.trim() });
+    state.view = "library";
+    render();
+  });
+  save.classList.add("primary");
+
+  view.append(
+    h("label", "", "Profil AoE4World", profile),
+    h("label", "", "Clé API AoE4World", apiKey),
+    h(
+      "p",
+      "hint",
+      "La clé sert à détecter aussi les parties personnalisées. Connecté sur aoe4world.com, ouvre " +
+        "aoe4world.com/account/profile_token et copie la valeur de « api_key ».",
+    ),
+    save,
+    message,
+    h("p", "hint", HOTKEY_HINT),
+  );
+  if (state.gameError) {
+    message.className = "status error";
+    message.textContent = `AoE4World : ${state.gameError}`;
+  }
   return view;
 }
 

@@ -4,17 +4,37 @@ async fn fetch_aoe4guides_build(id: String) -> Result<serde_json::Value, String>
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err("Identifiant de build invalide.".into());
     }
-    let url = format!("https://aoe4guides.com/api/builds/{id}?overlay=true");
-    let response = reqwest::get(&url)
+    get_json("aoe4guides", &format!("https://aoe4guides.com/api/builds/{id}?overlay=true")).await
+}
+
+/// Dernière partie (en cours ou terminée) d'un joueur, d'après AoE4World.
+/// La clé API, facultative, fait aussi remonter les parties personnalisées.
+#[tauri::command]
+async fn fetch_last_game(profile_id: String, api_key: Option<String>) -> Result<serde_json::Value, String> {
+    if profile_id.is_empty() || !profile_id.chars().all(|c| c.is_ascii_digit()) {
+        return Err("Identifiant de profil AoE4World invalide.".into());
+    }
+    let mut url = format!("https://aoe4world.com/api/v0/players/{profile_id}/games/last?include_alts=true");
+    if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+        if !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            return Err("Clé API AoE4World invalide.".into());
+        }
+        url.push_str(&format!("&api_key={key}&include_custom=true"));
+    }
+    get_json("AoE4World", &url).await
+}
+
+async fn get_json(site: &str, url: &str) -> Result<serde_json::Value, String> {
+    let response = reqwest::get(url)
         .await
-        .map_err(|e| format!("Connexion à aoe4guides impossible : {e}"))?;
+        .map_err(|e| format!("Connexion à {site} impossible : {e}"))?;
     if !response.status().is_success() {
-        return Err(format!("aoe4guides a répondu {}.", response.status()));
+        return Err(format!("{site} a répondu {}.", response.status()));
     }
     response
         .json()
         .await
-        .map_err(|e| format!("Réponse d'aoe4guides illisible : {e}"))
+        .map_err(|e| format!("Réponse de {site} illisible : {e}"))
 }
 
 #[tauri::command]
@@ -26,7 +46,7 @@ fn quit(app: tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![fetch_aoe4guides_build, quit])
+        .invoke_handler(tauri::generate_handler![fetch_aoe4guides_build, fetch_last_game, quit])
         .setup(|_app| {
             #[cfg(target_os = "macos")]
             {
