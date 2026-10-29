@@ -35,10 +35,14 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
   l'en-tête et la bibliothèque se filtre sur ta civ, avec un bandeau
   « Ta civ contre la civ adverse ». AoE4World voit la partie quelques secondes après
   son lancement.
-- **Importer un BO** : colle un lien `aoe4guides.com/builds/…` et choisis son style
-  (Boom, Agressif, Fast Castle, Autre). Si le téléchargement échoue, colle à la place
-  le JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
-- **Choisir** : filtre par civ et par style, puis ▶ sur le BO voulu.
+- **Bibliothèque** : une grille avec le drapeau de chaque civ et le nombre de BO
+  enregistrés. Clique sur une civ pour voir ses BO, rangés par style (Boom, Agressif,
+  Fast Castle, Autre), puis ▶ sur le BO voulu.
+- **Trouver des BO** : 🌐 **Parcourir aoe4guides** ouvre le site dans une fenêtre de
+  BoGo. Sur la page d'un build, un panneau « Importer dans BoGo » apparaît en bas à
+  droite : choisis le style, le BO est ajouté à la bibliothèque.
+- **Importer un lien** : tu peux aussi coller un lien `aoe4guides.com/builds/…`, ou le
+  JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
 - **Pendant la partie** : l'étape en cours (villageois visés, répartition par
   ressource, âge, temps visé), ses consignes et un aperçu de la suivante.
 - **Horloge du jeu** : BoGo lit l'horloge en haut de l'écran dans la fenêtre GeForce
@@ -107,7 +111,8 @@ La compilation de l'appli Mac est faite par GitHub Actions (`.github/workflows/b
 
 ## Projets dont on s'inspire
 
-- [aoe4world/overlay](https://github.com/aoe4world/overlay) : détection de la partie via l'API AoE4World.
+- [aoe4world/overlay](https://github.com/aoe4world/overlay) : détection de la partie via l'API AoE4World ;
+  les drapeaux des civilisations viennent de ce projet (licence MIT).
 - [FluffyMaguro/AoE4_Overlay](https://github.com/FluffyMaguro/AoE4_Overlay) : overlay de partie et de BO.
 - [CraftySalamander/RTS_Overlay](https://github.com/CraftySalamander/RTS_Overlay) : format de BO, raccourcis globaux, mode chrono.
   Les icônes du jeu affichées dans les consignes sont chargées depuis son site.

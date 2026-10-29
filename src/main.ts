@@ -13,6 +13,7 @@ import {
   type BuildOrderStep,
 } from "./buildOrder";
 import { CIVILIZATIONS } from "./civs";
+import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
 import {
   addBuild,
@@ -63,7 +64,8 @@ const VISION_STATUS: Record<string, string> = {
 };
 
 interface State {
-  view: "library" | "play" | "settings";
+  /** civs : grille des drapeaux ; civ : BO de la civ choisie. */
+  view: "civs" | "civ" | "play" | "settings";
   library: SavedBuild[];
   civ: string;
   style: Style | "";
@@ -82,7 +84,7 @@ interface State {
 }
 
 const state: State = {
-  view: "library",
+  view: "civs",
   library: loadLibrary(localStorage),
   civ: "",
   style: "",
@@ -109,6 +111,7 @@ registerHotkeys();
 pollGame();
 setInterval(pollGame, POLL_SECONDS * 1000);
 listen<VisionEvent>("vision", (event) => onVision(event.payload));
+listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
 if (state.settings.readScreen) startVision();
 
 document.addEventListener("keydown", (e) => {
@@ -165,26 +168,41 @@ async function registerHotkeys() {
 async function importBuild(input: string, style: Style) {
   const text = input.trim();
   if (!text) return;
+  if (!text.startsWith("{")) {
+    const id = extractBuildId(text);
+    if (id) return importFromGuides(id, style);
+    state.importStatus = { text: "Colle un lien aoe4guides.com/builds/… ou le JSON de l'export Overlay Tool.", error: true };
+    return render();
+  }
+  try {
+    saveImported(parseBuildOrder(text), style);
+  } catch (err) {
+    state.importStatus = { text: errorText(err), error: true };
+  }
+  render();
+}
+
+/** Importe un BO d'aoe4guides : depuis un lien collé ou depuis la fenêtre aoe4guides. */
+async function importFromGuides(id: string, style: Style) {
   state.importStatus = { text: "Import en cours…", error: false };
   render();
   try {
-    let build: BuildOrder;
-    let sourceUrl: string | undefined;
-    if (text.startsWith("{")) {
-      build = parseBuildOrder(text);
-    } else {
-      const id = extractBuildId(text);
-      if (!id) throw new Error("Colle un lien aoe4guides.com/builds/… ou le JSON de l'export Overlay Tool.");
-      build = await fetchBuild(id);
-      sourceUrl = `https://aoe4guides.com/builds/${id}`;
-    }
-    state.library = addBuild(state.library, build, style, sourceUrl);
-    saveLibrary(localStorage, state.library);
-    state.importStatus = { text: `« ${build.name} » ajouté.`, error: false };
+    saveImported(await fetchBuild(id), style, `https://aoe4guides.com/builds/${id}`);
   } catch (err) {
-    state.importStatus = { text: err instanceof Error ? err.message : String(err), error: true };
+    state.importStatus = { text: errorText(err), error: true };
   }
   render();
+}
+
+function saveImported(build: BuildOrder, style: Style, sourceUrl?: string) {
+  state.library = addBuild(state.library, build, style, sourceUrl);
+  saveLibrary(localStorage, state.library);
+  const civs = civilizationsOf(build).join(", ");
+  state.importStatus = { text: `« ${build.name} » ajouté (${civs}, ${STYLES[style]}).`, error: false };
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 async function pollGame() {
@@ -199,13 +217,13 @@ async function pollGame() {
       state.handledGameId = game.id;
       state.civ = game.myCivilization;
       state.style = "";
-      state.view = "library";
+      state.view = "civ";
       saveSession();
       render();
       return;
     }
   } catch (err) {
-    state.gameError = err instanceof Error ? err.message : String(err);
+    state.gameError = errorText(err);
   }
   // Sans nouvelle partie, on ne rafraîchit que l'en-tête pour ne pas effacer une saisie en cours.
   refreshHeader();
@@ -220,7 +238,7 @@ async function startVision() {
   try {
     await invoke("start_vision");
   } catch (err) {
-    state.vision.error = err instanceof Error ? err.message : String(err);
+    state.vision.error = errorText(err);
     refreshHeader();
   }
 }
@@ -296,8 +314,9 @@ function restoreSession() {
 
 function render() {
   document.body.classList.toggle("locked", state.locked);
-  const body =
-    state.view === "settings" ? settingsView() : state.view === "play" && current() ? playView(current()!) : libraryView();
+  const views = { civs: civsView, civ: civView, settings: settingsView, play: () => playView(current()!) };
+  const view = state.view === "play" && !current() ? "civs" : state.view;
+  const body = view === "civ" && !state.civ ? civsView() : views[view]();
   app.replaceChildren(header(), body);
 }
 
@@ -307,10 +326,10 @@ function header(): HTMLElement {
   const title = h("span", "title", "BoGo", gameStatus());
   title.dataset.tauriDragRegion = "";
   const actions = h("div", "actions");
-  if (state.view === "play") actions.append(button("📚", "Bibliothèque", () => ((state.view = "library"), render())));
+  if (state.view === "play") actions.append(button("📚", "Bibliothèque", () => showLibrary()));
   else if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
   actions.append(
-    button("⚙", "Réglages", () => ((state.view = state.view === "settings" ? "library" : "settings"), render())),
+    button("⚙", "Réglages", () => (state.view === "settings" ? showLibrary() : ((state.view = "settings"), render()))),
     button(state.locked ? "🔒" : "🔓", "Verrouiller (clics transmis au jeu)", () => setLocked(!state.locked)),
     button("✕", "Quitter BoGo", () => invoke("quit")),
   );
@@ -396,31 +415,54 @@ function icon(path: string): HTMLElement {
   return img;
 }
 
-function libraryView(): HTMLElement {
-  const view = h("main", "library");
+function showLibrary(civ = state.civ) {
+  state.civ = civ;
+  state.view = civ ? "civ" : "civs";
+  saveSession();
+  render();
+}
+
+function civsView(): HTMLElement {
+  const view = h("main", "civs");
   if (state.game?.ongoing) view.append(gameBanner(state.game));
 
-  const civSelect = select(
-    [["", "Toutes les civs"], ...CIVILIZATIONS.map((c): [string, string] => [c, c])],
-    state.civ,
-    (v) => ((state.civ = v), saveSession(), render()),
-  );
-  const styleSelect = select(
-    [["", "Tous les styles"], ...Object.entries(STYLES)],
-    state.style,
-    (v) => ((state.style = v as Style | ""), render()),
-  );
-  view.append(h("div", "filters", civSelect, styleSelect));
+  const grid = h("div", "civ-grid");
+  for (const civ of CIVILIZATIONS) {
+    const count = filterBuilds(state.library, civ, "").length;
+    const tile = h("button", "civ-tile", flag(civ), h("span", "civ-name", civ));
+    if (count) tile.append(h("span", "civ-count", String(count)));
+    tile.title = `${civ} : ${count} BO`;
+    tile.onclick = () => showLibrary(civ);
+    grid.append(tile);
+  }
+  view.append(guidesButton(), grid, importForm(), h("p", "hint", HOTKEY_HINT));
+  return view;
+}
 
-  const builds = filterBuilds(state.library, state.civ, state.style);
+function civView(): HTMLElement {
+  const civ = state.civ;
+  const view = h("main", "civ");
+  const back = button("←", "Toutes les civilisations", () => showLibrary(""));
+  view.append(h("div", "civ-header", back, flag(civ), h("strong", "", civ)));
+  if (state.game?.ongoing && state.game.myCivilization === civ) view.append(gameBanner(state.game));
+
+  const tabs = h("div", "tabs");
+  for (const [key, label] of [["", "Tous"], ...Object.entries(STYLES)] as [Style | "", string][]) {
+    const tab = button(label, `Styles : ${label}`, () => ((state.style = key), render()));
+    if (state.style === key) tab.classList.add("active");
+    tabs.append(tab);
+  }
+  view.append(tabs);
+
+  const builds = filterBuilds(state.library, civ, state.style);
   const list = h("ul", "builds");
-  if (builds.length === 0) list.append(h("li", "empty", "Aucun BO pour ce filtre. Importe-en un ci-dessous."));
+  if (builds.length === 0) list.append(h("li", "empty", "Aucun BO ici. Trouve-en un sur aoe4guides ou importe un lien."));
   for (const b of builds) {
     const info = h(
       "div",
       "build-info",
       h("span", "build-name", b.build.name),
-      h("span", "build-meta", `${STYLES[b.style]} · ${civilizationsOf(b.build).join(", ")}`),
+      h("span", "build-meta", `${STYLES[b.style]}${b.build.author ? ` · ${b.build.author}` : ""}`),
     );
     const del = button("🗑", "Supprimer", () => {
       state.library = removeBuild(state.library, b.id);
@@ -428,24 +470,45 @@ function libraryView(): HTMLElement {
       if (state.currentId === b.id) state.currentId = null;
       render();
     });
-    const item = h("li", "build", info, button("▶", "Jouer ce BO", () => play(b.id)), del);
-    list.append(item);
+    list.append(h("li", "build", info, button("▶", "Jouer ce BO", () => play(b.id)), del));
   }
-  view.append(list);
+  view.append(list, guidesButton(), importForm());
+  return view;
+}
 
+function flag(civ: string): HTMLImageElement {
+  const img = document.createElement("img");
+  img.className = "flag";
+  img.src = flagUrl(civ);
+  img.alt = "";
+  return img;
+}
+
+function guidesButton(): HTMLElement {
+  const open = button("🌐 Parcourir aoe4guides", "Choisir des BO sur aoe4guides.com", () =>
+    invoke("open_aoe4guides").catch((err) => {
+      state.importStatus = { text: errorText(err), error: true };
+      render();
+    }),
+  );
+  open.classList.add("primary", "wide");
+  return open;
+}
+
+function importForm(): HTMLElement {
   const input = document.createElement("textarea");
   input.placeholder = "Lien aoe4guides.com/builds/… ou JSON de l'export « Overlay Tool »";
   input.rows = 2;
   let importStyle: Style = state.style || "boom";
   const importStyleSelect = select(Object.entries(STYLES), importStyle, (v) => (importStyle = v as Style));
   const go = button("Importer", "Importer le BO", () => importBuild(input.value, importStyle));
-  go.classList.add("primary");
-  const form = h("div", "import", input, h("div", "import-row", importStyleSelect, go));
+  const details = h("details", "import", h("summary", "", "Importer un lien ou un JSON"));
+  details.append(input, h("div", "import-row", importStyleSelect, go));
+  const form = h("div", "import-block", details);
   if (state.importStatus) {
     form.append(h("p", state.importStatus.error ? "status error" : "status", state.importStatus.text));
   }
-  view.append(form, h("p", "hint", HOTKEY_HINT));
-  return view;
+  return form;
 }
 
 function visionStatus(): HTMLElement {
@@ -508,8 +571,7 @@ function settingsView(): HTMLElement {
       return;
     }
     saveSettings({ profileId, apiKey: apiKey.value.trim(), readScreen: readScreen.checked });
-    state.view = "library";
-    render();
+    showLibrary();
   });
   save.classList.add("primary");
 

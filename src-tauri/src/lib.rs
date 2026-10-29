@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 /// Télécharge un BO aoe4guides au format overlay (celui de RTS_Overlay).
 #[tauri::command]
@@ -40,6 +40,48 @@ async fn get_json(site: &str, url: &str) -> Result<serde_json::Value, String> {
         .json()
         .await
         .map_err(|e| format!("Réponse de {site} illisible : {e}"))
+}
+
+const IMPORT_HOST: &str = "bogo.import";
+const STYLES: [&str; 4] = ["boom", "agressif", "fast-castle", "autre"];
+
+/// Ouvre aoe4guides.com dans une fenêtre de BoGo. Sur la page d'un build, un panneau
+/// injecté propose de l'importer : le clic navigue vers https://bogo.import/<id>?style=…,
+/// navigation interceptée ici et transmise à l'overlay (événement « import-request »).
+#[tauri::command]
+async fn open_aoe4guides(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("aoe4guides") {
+        let _ = window.show();
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    let handle = app.clone();
+    WebviewWindowBuilder::new(
+        &app,
+        "aoe4guides",
+        WebviewUrl::External("https://aoe4guides.com/".parse().expect("adresse valide")),
+    )
+    .title("aoe4guides · BoGo")
+    .inner_size(1200.0, 820.0)
+    .initialization_script(include_str!("aoe4guides_import.js"))
+    .on_navigation(move |url| {
+        if url.host_str() != Some(IMPORT_HOST) {
+            return true;
+        }
+        let id = url.path().trim_matches('/');
+        let style = url
+            .query_pairs()
+            .find(|(key, _)| key == "style")
+            .map(|(_, value)| value.into_owned())
+            .filter(|style| STYLES.contains(&style.as_str()))
+            .unwrap_or_else(|| "autre".into());
+        if !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            let _ = handle.emit_to("overlay", "import-request", serde_json::json!({ "id": id, "style": style }));
+        }
+        false
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Processus bogo-vision en cours (lecture de l'horloge à l'écran).
@@ -104,6 +146,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fetch_aoe4guides_build,
             fetch_last_game,
+            open_aoe4guides,
             start_vision,
             stop_vision,
             quit
@@ -111,7 +154,6 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(target_os = "macos")]
             {
-                use tauri::Manager;
                 // Appli « accessoire » : pas d'icône dans le Dock, et ses fenêtres
                 // peuvent s'afficher dans l'espace plein écran d'une autre appli.
                 _app.set_activation_policy(tauri::ActivationPolicy::Accessory);

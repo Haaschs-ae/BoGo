@@ -34,3 +34,10 @@ export function civilizationName(aoe4worldId: string): string {
     aoe4worldId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
+
+/** "Knights Templar" → "knights_templar" (insensible à la casse) ; null si la civ est inconnue. */
+export function civilizationId(name: string): string | null {
+  const lower = name.toLowerCase();
+  const entry = Object.entries(CIVILIZATION_NAMES).find(([, n]) => n.toLowerCase() === lower);
+  return entry ? entry[0] : null;
+}

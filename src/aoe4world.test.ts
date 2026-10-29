@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractProfileId, kindLabel, parseLastGame } from "./aoe4world";
+import { civilizationId } from "./civs";
 
 function player(profile_id: number, civilization: string) {
   return { profile_id, civilization, name: `p${profile_id}` };
@@ -63,4 +64,10 @@ it("kindLabel traduit le type de partie", () => {
   expect(kindLabel("rm_1v1")).toBe("Classée 1v1");
   expect(kindLabel("qm_4v4")).toBe("Partie rapide 4v4");
   expect(kindLabel("custom")).toBe("Personnalisée");
+});
+
+it("civilizationId retrouve l'identifiant AoE4World d'un nom de civ", () => {
+  expect(civilizationId("Knights Templar")).toBe("knights_templar");
+  expect(civilizationId("zhu xi's legacy")).toBe("zhu_xis_legacy");
+  expect(civilizationId("Atlantes")).toBeNull();
 });
