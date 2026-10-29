@@ -26,8 +26,11 @@ describe("bibliothèque", () => {
   it("remplace un BO réimporté depuis le même lien", () => {
     const url = "https://aoe4guides.com/builds/abc12345";
     let lib = addBuild([], bo("v1", "Rus"), "boom", url);
+    const first = lib[0].id;
     lib = addBuild(lib, bo("v2", "Rus"), "boom", url);
     expect(lib.map((b) => b.build.name)).toEqual(["v2"]);
+    // Même identifiant : le journal et les matchups qui le citent le retrouvent.
+    expect(lib[0].id).toBe(first);
   });
 
   it("sauvegarde, recharge et supprime", () => {

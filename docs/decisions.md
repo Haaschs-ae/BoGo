@@ -38,6 +38,19 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   Rust propre à chaque système. Raccourcis Windows : Ctrl+Maj (pas Ctrl+Alt = AltGr en AZERTY),
   à valider avec des testeurs Windows. L'édition Windows est expérimentale (suivi manuel) tant
   que la lecture d'écran Windows n'existe pas.
+- **2026-10-29 · Deux modes : VS (contre des joueurs, par défaut) et IA (entraînement contre
+  l'IA).** Remplace « Classé sobre / Entraînement en personnalisée » : une personnalisée contre un
+  joueur est en VS. VS = BO papier qui tourne ses pages (ni alertes, ni comptes en direct, ni
+  « clique ! », prochain villageois tel qu'écrit, pages au nombre de villageois écrit). IA
+  seulement sur choix explicite, vérifié (personnalisée sans adversaire listé, ou aucune partie
+  contre des humains vue après 1:00 de jeu), pour une partie ; VS forcé dès qu'un joueur est vu.
+  Voir docs/profil-et-modes.md.
+- **2026-10-29 · Mes matchups : 📌 BO de base par civ et règles civ × adversaire × carte.**
+  Ce que tu as réglé passe avant ce que BoGo déduit (mémoire, habitude). Ordre : adversaire et
+  carte, puis carte, puis adversaire, puis 📌. La carte passe avant l'adversaire (carte d'eau) ;
+  en cas de conflit, pas de lancement auto. « Contre » en 1v1 classé ou rapide seulement. Un BO de
+  tes matchups peut partir tout seul même jamais joué : exception à « jamais un BO jamais joué »,
+  pour les seuls choix explicites.
 - **2026-10-29 · Écran de choix, v1 sur la bibliothèque** (sans attendre les données
   aoe4guides). Règles : BO choisi avant la partie, mémoire contre la civ adverse (1v1), habitude
   avec la civ, bibliothèque ; catégories = celles de la bibliothèque (1 Boom, 2 Agressif, 3 Fast

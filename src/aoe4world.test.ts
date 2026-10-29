@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractProfileId, kindLabel, parseLastGame, soloOpponent } from "./aoe4world";
+import { extractProfileId, kindLabel, opposition, parseLastGame, soloOpponent } from "./aoe4world";
 import { civilizationId } from "./civs";
 
 function player(profile_id: number, civilization: string) {
@@ -43,6 +43,19 @@ describe("parseLastGame", () => {
     expect(soloOpponent(ffa!)).toBeNull();
   });
 
+  it("en personnalisée, AoE4World omet les IA : jamais de civ adverse, et IA si personne en face", () => {
+    // Moi + une IA contre un joueur + une IA : AoE4World ne montre que les deux humains.
+    const mixed = parseLastGame({ ...game, kind: "custom", teams: [[player(5612909, "rus")], [player(9, "french")]] }, "5612909");
+    expect(mixed?.oneVsOne).toBe(true);
+    expect(soloOpponent(mixed!)).toBeNull();
+    expect(opposition(mixed!)).toBe("humans");
+    const vsAi = parseLastGame({ ...game, kind: "custom", teams: [[player(5612909, "rus")]] }, "5612909");
+    expect(opposition(vsAi!)).toBe("ai");
+    // Classée ou rapide : toujours des humains, même si la liste est incomplète.
+    expect(opposition(parseLastGame({ ...game, kind: "qm_1v1", teams: [[player(5612909, "rus")]] }, "5612909")!)).toBe("humans");
+    expect(opposition(parseLastGame(game, "5612909")!)).toBe("humans");
+  });
+
   it("repère une civ tirée au sort", () => {
     const random = { ...player(5612909, "rus"), civilization_randomized: true };
     const parsed = parseLastGame({ ...game, kind: "rm_1v1", teams: [[random], [player(9, "french")]] }, "5612909");
@@ -82,6 +95,8 @@ it("kindLabel traduit le type de partie", () => {
   expect(kindLabel("rm_1v1")).toBe("Classée 1v1");
   expect(kindLabel("qm_4v4")).toBe("Partie rapide 4v4");
   expect(kindLabel("custom")).toBe("Personnalisée");
+  expect(kindLabel("qm_2v2_ew")).toBe("Partie rapide 2v2 Empire Wars");
+  expect(kindLabel("qm_ffa_nomad")).toBe("Partie rapide chacun pour soi Nomade");
 });
 
 it("civilizationId retrouve l'identifiant AoE4World d'un nom de civ", () => {

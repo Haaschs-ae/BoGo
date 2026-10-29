@@ -13,7 +13,8 @@ reste à vérifier. Le lancement automatique après 8 s est conservé (décision
    sur moins de la moitié des étapes) sont écartés. Les BO qui citent une unité ou une
    technologie retirée par un patch (`aoe4world/data`, `patch-history.json`) ne sont jamais
    lancés automatiquement et portent un avertissement.
-2. **Ton choix d'avant la partie** : un BO lancé depuis la bibliothèque après la fin de la
+2. **Ton choix d'avant la partie** (puis, juste après : **tes matchups**, réglés avant la
+   partie, voir docs/profil-et-modes.md) : un BO lancé depuis la bibliothèque après la fin de la
    partie précédente (ou après le démarrage de BoGo) et pas encore rattaché à une partie est
    ton choix. Pas de compte à rebours ; une ligne « BO choisi avant la partie : X ».
 3. **Ta mémoire contre cette civ (1v1 seulement)** : le BO gardé la dernière fois contre

@@ -170,6 +170,13 @@ export class BuildEngine {
   /** Heure d'arrivée sur l'étape (posée à la lecture suivante après un changement). */
   private enteredAt: number | null = null;
   private completed = false;
+  /**
+   * Entraînement contre l'IA : la page attend la répartition de l'étape, et l'état porte les
+   * conseils calculés en direct (répartition, dérive, « payable »). En Versus (false), BoGo
+   * n'est qu'un BO papier qui tourne ses pages : le nombre de villageois écrit suffit, et aucun
+   * conseil ne sort du moteur.
+   */
+  coaching = true;
 
   constructor(
     private readonly steps: BuildOrderStep[],
@@ -214,15 +221,17 @@ export class BuildEngine {
     const options = goalCosts(goal, this.civilization);
     const stock = this.last?.stock;
     const affordable =
-      !!stock && options.some((cost) => Object.entries(cost).every(([r, n]) => stock[r as Resource] >= (n ?? 0)));
+      this.coaching &&
+      !!stock &&
+      options.some((cost) => Object.entries(cost).every(([r, n]) => stock[r as Resource] >= (n ?? 0)));
     return {
       index: this.index,
       goal,
       cost: options[0] ?? null,
       affordable,
       villagers: this.villagers,
-      misplacement: this.checkMisplacement(now),
-      drift: this.drift(goal),
+      misplacement: this.coaching ? this.checkMisplacement(now) : null,
+      drift: this.coaching ? this.drift(goal) : 0,
       completed: this.completed,
     };
   }
@@ -300,7 +309,7 @@ export class BuildEngine {
     if (stepGoal(this.steps, this.index).kind !== "villagers") return;
     const target = this.targets[this.index];
     if (v <= target || !this.distributionReached(this.index)) return;
-    this.record(this.index + 1, `${v} villageois > ${target}, répartition faite`);
+    this.record(this.index + 1, `${v} villageois > ${target}${this.coaching ? ", répartition faite" : ""}`);
     this.moveTo(this.index + 1);
     this.enteredAt = now;
   }
@@ -322,10 +331,19 @@ export class BuildEngine {
     return extra > 0 && !this.distributionReached(this.index) ? extra : 0;
   }
 
-  /** Les villageois sont répartis comme l'étape le demande, à quelques villageois près. */
+  /**
+   * La répartition de l'étape est faite, jugée même en Versus : sert seulement au journal (un
+   * BO lancé tout seul n'est « suivi » que si ses étapes l'ont été), jamais affichée.
+   */
+  followed(index: number): boolean {
+    const gatherers = this.last?.gatherers;
+    return !!gatherers && distributionReached(this.steps[index].resources, gatherers);
+  }
+
+  /** Les villageois sont répartis comme l'étape le demande, à quelques villageois près (Versus : sans objet). */
   private distributionReached(index: number): boolean {
     const gatherers = this.last?.gatherers;
-    return !gatherers || distributionReached(this.steps[index].resources, gatherers);
+    return !this.coaching || !gatherers || distributionReached(this.steps[index].resources, gatherers);
   }
 
   /**

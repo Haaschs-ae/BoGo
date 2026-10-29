@@ -59,11 +59,22 @@ export function parseLastGame(data: unknown, profileId: string): DetectedGame | 
 }
 
 /**
- * Civ de l'adversaire, seulement en 1v1. À plusieurs, trop de cas possibles pour en tirer un
- * BO : BoGo n'affiche pas les adversaires et ne s'en sert pas pour conseiller.
+ * Civ de l'adversaire, seulement en 1v1 classé ou rapide. À plusieurs, trop de cas possibles
+ * pour en tirer un BO : BoGo n'affiche pas les adversaires et ne s'en sert pas pour conseiller.
+ * En personnalisée, AoE4World omet les IA : « moi + une IA contre un joueur + une IA » y
+ * ressemble à un 1v1, donc rien sur l'adversaire.
  */
 export function soloOpponent(game: DetectedGame): string | null {
-  return game.oneVsOne ? (game.opponentCivilizations[0] ?? null) : null;
+  return game.oneVsOne && /^(rm|qm)_1v1(_|$)/.test(game.kind) ? (game.opponentCivilizations[0] ?? null) : null;
+}
+
+/**
+ * Contre qui : AoE4World ne liste jamais les IA (absentes des équipes, sans marque). Une partie
+ * personnalisée sans aucun adversaire listé se joue donc contre l'IA ; tout le reste, classée,
+ * rapide, personnalisée avec un adversaire listé, type inconnu, se joue contre des humains.
+ */
+export function opposition(game: DetectedGame): "humans" | "ai" {
+  return game.kind === "custom" && game.opponentCivilizations.length === 0 ? "ai" : "humans";
 }
 
 export async function fetchLastGame(profileId: string, apiKey: string): Promise<DetectedGame | null> {
@@ -71,11 +82,11 @@ export async function fetchLastGame(profileId: string, apiKey: string): Promise<
   return parseLastGame(data, profileId);
 }
 
-/** Libellé lisible du type de partie : "rm_1v1" → "Classée 1v1". */
+/** Libellé lisible du type de partie : "rm_1v1" → "Classée 1v1", "qm_2v2_ew" → "Partie rapide 2v2 Empire Wars". */
 export function kindLabel(kind: string): string {
-  const [prefix, mode] = kind.split("_");
-  const names: Record<string, string> = { rm: "Classée", qm: "Partie rapide", custom: "Personnalisée" };
-  return [names[prefix] ?? prefix, mode].filter(Boolean).join(" ");
+  const [prefix, ...rest] = kind.split("_");
+  const names: Record<string, string> = { rm: "Classée", qm: "Partie rapide", custom: "Personnalisée", ew: "Empire Wars", nomad: "Nomade", ffa: "chacun pour soi", console: "console" };
+  return [prefix, ...rest].map((part) => names[part] ?? part).join(" ");
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

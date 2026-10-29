@@ -48,13 +48,18 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
   dernière partie. Quand une nouvelle partie commence, le point vert s'allume dans
   l'en-tête et BoGo ouvre le **choix du BO** (ou, s'il n'a rien à proposer, la liste des BO
   de ta civ). AoE4World voit la partie quelques secondes après son lancement.
-- **Choix du BO au début de la partie** : BoGo propose un BO de ta bibliothèque et dit
-  pourquoi, avec un fait (« Gardé à 3 de tes 4 dernières parties avec English », « Gardé la
+- **Mes matchups** (🎯 sur la page d'une civ) : 📌 un BO de base par civ, présélectionné sans
+  question de matchup, et des règles « contre telle civ, sur telle carte → ce BO ». Au début de
+  la partie, la règle la plus précise gagne : civ adverse et carte, puis carte (une carte d'eau
+  impose son BO), puis civ adverse, puis 📌. « Contre » ne joue qu'en 1v1 classé ou rapide.
+  Détails : [docs/profil-et-modes.md](docs/profil-et-modes.md).
+- **Choix du BO au début de la partie** : BoGo propose un BO (tes matchups d'abord, sinon un BO
+  de ta bibliothèque) et dit pourquoi, avec un fait (« Gardé à 3 de tes 4 dernières parties avec English », « Gardé la
   dernière fois contre French » en 1v1, « Le plus récent de ta bibliothèque »). ▶ Lancer
   (⌘⌥↵), ou une touche par catégorie : ⌘⌥1 Boom, ⌘⌥2 Agressif, ⌘⌥3 Fast Castle, ⌘⌥4 Autre,
   actives jusqu'au premier passage d'âge pour changer d'avis. En **1v1 classé ou rapide**, un
-  BO que tu as déjà joué se lance tout seul après **8 s** (⌘⌥⌫ annule) ; jamais en équipe ni
-  en personnalisée, jamais un BO jamais joué, ni après 2:00 de jeu, ni BoGo masqué ou réduit,
+  BO que tu as déjà joué, ou réglé dans tes matchups, se lance tout seul après **8 s** (⌘⌥⌫
+  annule) ; jamais en équipe ni en personnalisée, jamais un autre BO jamais joué, ni après 2:00 de jeu, ni BoGo masqué ou réduit,
   ni si ta répartition à l'écran ne correspond pas au BO, ni après 2 annulations de suite avec
   cette civ. Un BO lancé depuis la bibliothèque **avant** la partie est gardé tel quel.
   Empire Wars et Nomade : pas de conseil.
@@ -66,7 +71,15 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
   droite : choisis le style, le BO est ajouté à la bibliothèque.
 - **Importer un lien** : tu peux aussi coller un lien `aoe4guides.com/builds/…`, ou le
   JSON de l'export « Overlay Tool » d'aoe4guides (menu ⋮ du build).
-- **Pendant la partie**, du plus important au détail : une alerte s'il y en a une
+- **Deux modes**, toujours affichés en haut (VS / IA) :
+  - **VS**, par défaut, contre des joueurs (classée, rapide, personnalisée) : BoGo n'est qu'un
+    BO papier qui tourne ses pages tout seul. Consignes, cibles écrites, prochain villageois tel
+    qu'écrit ; ni alertes, ni comptes lus en direct, ni « clique ! ».
+  - **IA**, entraînement contre l'IA : clique VS → IA dans l'en-tête avant la partie. BoGo
+    vérifie sur AoE4World que ce n'est ni une classée ni une partie rapide (1 min de jeu), puis
+    te coache (tout ce qui suit). Le choix vaut pour une partie et tombe dès qu'un joueur est vu
+    en face.
+- **Pendant la partie en IA**, du plus important au détail : une alerte s'il y en a une
   (« 3 villageois de trop à la nourriture → envoies-en 2 au bois », villageois inactifs),
   la grande icône du **prochain villageois** produit, sans chiffre (« BOIS » ; « BOIS · il
   construit un camp de bûcherons » s'il commence l'étape suivante ; « CONSTRUCTION » pour un
@@ -230,12 +243,14 @@ REPLAY=/chemin/vers/partie-1730190000.jsonl npx vitest run src/replay.test.ts --
 
 ## Fair-play : ce que BoGo fait, et ne fera jamais
 
-Aucune règle publique de Microsoft ou de World's Edge n'autorise ni n'interdit explicitement un
-assistant qui lit l'écran. BoGo est **toléré à ce jour, sans approbation officielle**. Il reste
-défendable tant qu'il respecte ces limites, qui sont des règles du projet :
+Aucune règle publique de Microsoft, World's Edge ou Relic n'autorise ni n'interdit à ce jour un
+assistant qui lit l'écran. Des outils comparables existent depuis des années sans sanction connue.
+BoGo n'a demandé ni reçu **aucune approbation**. Il reste défendable tant qu'il respecte ces limites,
+qui sont des règles du projet :
 
 - BoGo **lit uniquement les pixels de ta propre fenêtre** (GeForce Now) avec les API publiques du
-  système, et fait la reconnaissance de texte sur ta machine. Rien n'est enregistré ni envoyé.
+  système, et fait la reconnaissance de texte sur ta machine. Rien n'est envoyé ; rien n'est
+  enregistré, sauf si tu actives « Enregistrer mes parties » (fichier local).
 - BoGo **n'envoie jamais de touche ni de clic** au jeu, **ne lit ni n'écrit la mémoire du jeu**,
   **n'injecte aucun code**, ne touche pas au trafic réseau ni aux fichiers du jeu.
 - BoGo **n'affiche que ce que tu vois déjà** ou ce qui est public avant la partie : jamais d'information
@@ -245,6 +260,25 @@ défendable tant qu'il respecte ces limites, qui sont des règles du projet :
   fait BoGo, ou sors-le de la capture.
 - Teste les nouvelles versions contre l'IA ou en partie personnalisée, jamais en classé ; ne quitte
   jamais une partie classée à cause d'un bug.
+
+### Deux modes : VS (contre des joueurs) et IA (entraînement contre l'IA)
+
+Contre l'IA, BoGo te coache. Contre un joueur, BoGo n'est qu'un BO papier qui tourne ses pages
+tout seul : il montre ton plan préparé avant la partie et ne commente jamais ta partie en cours.
+
+| | VS | IA |
+|---|---|---|
+| BO écrit, pages qui tournent toutes seules | oui | oui |
+| Écran de choix, matchups, civ adverse en 1v1 | oui | oui |
+| Prochain villageois | tel qu'écrit dans l'étape | calculé sur ta partie |
+| Comptes réel / cible, stock du passage d'âge, « clique ! » | non | oui |
+| Alertes de répartition et d'inactifs | non | oui |
+
+BoGo passe en VS dès qu'il ne sait pas contre qui tu joues : AoE4World prouve la présence de
+joueurs, jamais celle de l'IA. En personnalisée contre un joueur, BoGo ne peut le voir qu'avec la
+clé API : sans elle, c'est à toi de laisser VS. Ce découpage est une précaution que BoGo
+s'impose ; il n'a été ni demandé ni validé par l'éditeur et ne garantit rien. Si l'éditeur
+publie une règle, elle s'applique et BoGo s'y alignera.
 
 ## Données et confidentialité
 

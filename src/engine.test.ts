@@ -295,6 +295,21 @@ describe("BuildEngine", () => {
     expect(state.drift).toBe(6);
   });
 
+  it("Versus : BO papier, la page tourne au nombre de villageois écrit et aucun conseil ne sort", () => {
+    const engine = new BuildEngine(steps, "English");
+    engine.coaching = false;
+    engine.setStep(1);
+    // 10 villageois mal répartis (9 nourriture, 1 bois) : la page tourne quand même.
+    let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 6);
+    expect(state.index).toBe(2);
+    expect(state.misplacement).toBeNull();
+    expect(state.drift).toBe(0);
+    expect(engine.log[0]).toBe("Étape 2 → 3 : 10 villageois > 9");
+    // Passage d'âge payable : pas de « clique ! » en Versus.
+    state = feed(engine, reading({ food: 7, wood: 3, gold: 3 }, { food: 420, gold: 210 }), 6000, 3);
+    expect(state.affordable).toBe(false);
+  });
+
   it("ne signale pas les villageois qui attendent de construire (bâtisseurs prévus) : vu en partie", () => {
     const withBuilders = [step(21, { food: 6, wood: 0, gold: 7, builder: 8 })];
     const engine = new BuildEngine(withBuilders, "English");

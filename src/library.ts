@@ -48,8 +48,10 @@ export function addBuild(
   style: Style,
   sourceUrl?: string,
 ): SavedBuild[] {
-  const saved: SavedBuild = { id: newId(), style, build, sourceUrl, addedAt: Date.now() };
-  // Réimporter le même lien remplace l'ancienne version.
+  // Réimporter le même lien remplace l'ancienne version, sous le même identifiant : le journal
+  // et les matchups qui la citent la retrouvent.
+  const previous = sourceUrl ? library.find((b) => b.sourceUrl === sourceUrl) : undefined;
+  const saved: SavedBuild = { id: previous?.id ?? newId(), style, build, sourceUrl, addedAt: Date.now() };
   const rest = sourceUrl ? library.filter((b) => b.sourceUrl !== sourceUrl) : library;
   return [...rest, saved];
 }

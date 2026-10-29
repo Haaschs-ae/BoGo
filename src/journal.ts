@@ -31,6 +31,12 @@ export interface GameEntry {
   autoSteps: number;
   /** Horloge du premier passage d'âge vu, en secondes. */
   ageUpAt: number | null;
+  /** D'où vient le BO proposé : choisi avant la partie, matchups, mémoire, habitude, bibliothèque. */
+  rule?: string;
+  /** BoGo a coaché la partie (Entraînement contre l'IA). */
+  coached?: boolean;
+  /** Horloge lue quand AoE4World a vu la partie (mesure de son délai). */
+  seenAtClock?: number | null;
 }
 
 /** Le BO gardé est celui actif à 4:00 de jeu, ou au premier passage d'âge s'il vient avant. */

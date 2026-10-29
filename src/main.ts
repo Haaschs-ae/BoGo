@@ -46,6 +46,33 @@ import { looksEnglish, translateText } from "./translate";
 import { adviseBuild, categoryPicks, COUNTDOWN_SECONDS, distributionMismatch, type Advice } from "./advice";
 import { newEntry, parseJournal, serializeJournal, type GameEntry, type LaunchHow } from "./journal";
 import {
+  forgetBuild,
+  loadMatchups,
+  MAP_SUGGESTIONS,
+  mapKey,
+  matchupPick,
+  newRuleId,
+  PRECEDENCE,
+  ruleMatch,
+  saveMatchups,
+  type Matchups,
+  type MatchupRule,
+} from "./matchups";
+import {
+  aoe4worldSeen,
+  type PollStart,
+  arm,
+  clockRead,
+  currentMode,
+  FEATURES,
+  freshMemory,
+  MODE_LABELS,
+  projectLive,
+  type ModeFeatures,
+  type ModeWhy,
+  type PlayMode,
+} from "./mode";
+import {
   addBuild,
   filterBuilds,
   loadLibrary,
@@ -105,8 +132,11 @@ const VISION_STATUS: Record<string, string> = {
 };
 
 interface State {
-  /** civs : grille des drapeaux ; civ : BO de la civ choisie ; choice : choix du début de partie. */
-  view: "civs" | "civ" | "play" | "settings" | "choice";
+  /**
+   * civs : grille des drapeaux ; civ : BO de la civ choisie ; choice : choix du début de partie ;
+   * matchups : BO de base et règles de la civ choisie.
+   */
+  view: "civs" | "civ" | "play" | "settings" | "choice" | "matchups";
   library: SavedBuild[];
   civ: string;
   style: Style | "";
@@ -133,6 +163,8 @@ interface State {
   recording: { path: string | null; error: string | null };
   /** Choix du début de partie : de la détection au premier passage d'âge (ou 5 min). */
   offer: Offer | null;
+  /** Mes matchups : BO de base par civ et règles civ × adversaire × carte (voir matchups.ts). */
+  matchups: Matchups;
 }
 
 interface Offer {
@@ -169,6 +201,7 @@ const state: State = {
   finished: false,
   recording: { path: null, error: null },
   offer: null,
+  matchups: loadMatchups(localStorage),
 };
 const clock = new ClockTracker();
 /** Moteur du BO en cours, recréé à chaque lancement d'un BO. */
@@ -214,8 +247,47 @@ function resetEngine() {
   }
   // La civ jouée sert au coût du passage d'âge et du TC.
   engine = new BuildEngine(saved.build.build_order, playedCivilization(saved));
+  engine.coaching = features().coaching;
   engine.setStep(state.step, "reprise du BO");
   state.engine = null;
+}
+
+/**
+ * Ce que BoGo retient pour décider du mode : choix « IA » (bascule de l'en-tête, pour la partie
+ * en cours ou la prochaine), horloge, joueur vu en face, vérification. Jamais enregistré : au
+ * lancement de BoGo, c'est VS. Voir mode.ts.
+ */
+let modeMemory = freshMemory();
+/** Ligne d'information de quelques secondes (retour forcé en VS). */
+let modeNotice: { text: string; until: number } | null = null;
+
+/** « IA » choisi (ou retiré) : il vaudra pour la partie en cours, ou pour la prochaine. */
+function setTraining(on: boolean) {
+  modeMemory = arm(modeMemory, on, Date.now());
+  if (engine) engine.coaching = features().coaching;
+  render();
+}
+
+/** Horloge lue : une nouvelle partie fait tomber le choix « IA » de la précédente. */
+function noteClock(seconds: number) {
+  const now = Date.now();
+  const { memory, notice } = clockRead(modeMemory, seconds, now);
+  modeMemory = memory;
+  if (notice) modeNotice = { text: notice, until: now + 6000 };
+}
+
+/** Mode et raison, recalculés à chaque fois (voir decideMode). */
+function modeState(now = Date.now()): { mode: PlayMode; why: ModeWhy } {
+  return currentMode(modeMemory, state.game, clock.current(now), !!state.settings.profileId, now);
+}
+
+/** Entraînement (contre l'IA, sur ton choix, vérifié) ou Versus (contre des joueurs, ou quand BoGo ne sait pas). */
+function mode(): PlayMode {
+  return modeState().mode;
+}
+
+function features(): Readonly<ModeFeatures> {
+  return FEATURES[mode()];
 }
 
 /** Le panneau a été lu il y a peu : c'est lui qui pilote le BO (sinon l'horloge, sinon le clavier). */
@@ -304,8 +376,22 @@ function gameEntry(): GameEntry | undefined {
   return game?.ongoing ? journal.find((e) => e.gameId === game.id) : undefined;
 }
 
+/**
+ * Ce qu'AoE4World dit des adversaires : un joueur vu en face dans la partie en cours impose VS
+ * jusqu'à sa fin ; une réponse sans partie contre des humains vérifie le choix « IA ».
+ */
+function noteOpposition(game: DetectedGame | null, poll: PollStart, wasTraining: boolean) {
+  const now = Date.now();
+  const { memory, notice } = aoe4worldSeen(modeMemory, game, poll, clock.current(now), now, wasTraining);
+  modeMemory = memory;
+  if (notice) modeNotice = { text: notice, until: now + 5000 };
+  if (engine) engine.coaching = features().coaching;
+}
+
 /** BO lancé entre deux parties : ton choix pour la suivante, gardé tel quel à la détection. */
-let preChosen: string | null = null;
+let preChosen: { id: string; at: number } | null = null;
+/** Au-delà, un BO lancé avant la partie n'est plus « ton choix pour celle-ci » (essai, révision). */
+const PRECHOSEN_MS = 15 * 60_000;
 /** Raccourcis de choix actifs 5 min au plus quand aucun passage d'âge n'est vu (Windows). */
 const CHOICE_MS = 5 * 60_000;
 const REFUSED = "annulé";
@@ -326,12 +412,12 @@ function noteLaunch(id: string, how: LaunchHow) {
     entry.launches.push({ buildId: id, how, clock: Math.round(gameClock().seconds) });
     saveJournal();
   } else if (!state.game?.ongoing) {
-    preChosen = id;
+    preChosen = { id, at: Date.now() };
   }
 }
 
 /** Nouvelle partie : le BO choisi avant est gardé ; sinon l'écran de choix (ou les BO de la civ). */
-async function startGame(game: DetectedGame) {
+async function startGame(game: DetectedGame, seenAtClock: number | null = null) {
   const miniByChoice = state.mini && !state.finished;
   state.civ = game.myCivilization;
   state.style = "";
@@ -344,16 +430,28 @@ async function startGame(game: DetectedGame) {
     return;
   }
   const entry = newEntry(game, Date.now());
+  // Horloge lue quand AoE4World a vu la partie : mesure son délai (réglage de GRACE_SECONDS).
+  entry.seenAtClock = seenAtClock;
   journal.push(entry);
   saveJournal();
-  const pre = preChosen;
+  // Choisi avant la partie : lancé il y a moins de 15 min et toujours affiché (même réduit).
+  const pre = preChosen && Date.now() - preChosen.at <= PRECHOSEN_MS && state.view === "play" ? preChosen.id : null;
   preChosen = null;
-  const adviceGame = { kind: game.kind, civ: game.myCivilization, randomCiv: game.randomCiv, opponentCiv: soloOpponent(game) };
+  const adviceGame = {
+    kind: game.kind,
+    civ: game.myCivilization,
+    randomCiv: game.randomCiv,
+    opponentCiv: soloOpponent(game),
+    map: game.map,
+    // Personnalisée à plusieurs (AoE4World omet les IA) : comme une partie en équipe.
+    team: !game.oneVsOne && game.opponentCivilizations.length > 0,
+  };
   const past = journal.filter((e) => e !== entry);
   if (pre && pre === state.currentId && filterBuilds(state.library, game.myCivilization, "").some((b) => b.id === pre)) {
     // BO choisi avant la partie : rien ne change, pas de compte à rebours ; les touches de
     // catégorie permettent encore de changer d'avis jusqu'au passage d'âge.
     entry.launches.push({ buildId: pre, how: "pre", clock: 0 });
+    entry.rule = "pre";
     const offer: Offer = {
       game,
       advice: null,
@@ -368,16 +466,21 @@ async function startGame(game: DetectedGame) {
     saveSession();
     return render();
   }
-  const advice = adviseBuild(state.library, past, adviceGame, Date.now());
+  const advice = adviseBuild(state.library, past, adviceGame, Date.now(), state.matchups);
   state.mini = false;
   if (!advice) {
     // Rien à conseiller (aucun BO utilisable, Empire Wars, Nomade) : la liste des BO de la civ.
     return showLibrary(game.myCivilization);
   }
+  // La tuile allumée montre le BO proposé, et sa touche le lance.
+  const picks = { ...categoryPicks(state.library, past, adviceGame), [advice.build.style]: advice.build };
+  // Tes matchups se contredisent : l'autre BO garde sa touche de catégorie (si ce n'est pas la même).
+  if (advice.also && advice.also.build.style !== advice.build.style) picks[advice.also.build.style] = advice.also.build;
+  entry.rule = advice.rule;
   const offer: Offer = {
     game,
     advice,
-    picks: categoryPicks(state.library, past, adviceGame),
+    picks,
     countdownEnd: null,
     autoOff: advice.autoOff ?? (await momentBlocker(advice.build, miniByChoice)),
     until: Date.now() + CHOICE_MS,
@@ -398,7 +501,8 @@ async function momentBlocker(build: SavedBuild, miniByChoice: boolean): Promise<
   if (!(await appWindow.isVisible().catch(() => true))) return "BoGo masqué";
   const { seconds, read } = gameClock();
   if (seconds > (read ? 120 : 180)) return `partie déjà commencée (${formatClock(seconds)})`;
-  if (state.hud && hudIsFresh() && distributionMismatch(build.build, state.hud.reading)) return "répartition différente de ce BO";
+  // Garde-fou sans commentaire sur ta partie (le lancement auto ne joue qu'en VS) : pas de « répartition ».
+  if (state.hud && hudIsFresh() && distributionMismatch(build.build, state.hud.reading)) return "la partie a déjà commencé";
   return null;
 }
 
@@ -464,6 +568,14 @@ function noteAgeUp() {
     saveJournal();
   }
   endChoice();
+}
+
+/** BoGo a coaché cette partie (Entraînement) : noté au journal, une fois. */
+function noteCoached() {
+  const entry = gameEntry();
+  if (!entry || entry.coached) return;
+  entry.coached = true;
+  saveJournal();
 }
 
 /** Étape passée par le moteur alors que le BO en cours a été lancé tout seul : il est suivi. */
@@ -557,6 +669,15 @@ async function importFromGuides(id: string, style: Style) {
 function saveImported(build: BuildOrder, style: Style, sourceUrl?: string) {
   state.library = addBuild(state.library, build, style, sourceUrl);
   saveLibrary(localStorage, state.library);
+  // Le BO en cours, réimporté (même identifiant) : son étape reste dans les limites du nouveau.
+  const playing = current();
+  const replaced = state.library.find((b) => b.build === build);
+  if (replaced) englishBuilds.delete(replaced.id);
+  if (playing?.build === build) {
+    state.step = Math.min(state.step, build.build_order.length - 1);
+    saveSession();
+    resetEngine();
+  }
   const civs = civilizationsOf(build).join(", ");
   state.importStatus = { text: `« ${build.name} » ajouté (${civs}, ${STYLES[style]}).`, error: false };
 }
@@ -566,21 +687,30 @@ function errorText(err: unknown): string {
 }
 
 let polling = false;
+/** Partie (epoch) du dernier sondage fait pendant une partie, pour mesurer le délai d'AoE4World. */
+let lastPollEpoch: number | null = null;
 
 /** Un seul appel AoE4World à la fois : une réponse lente ne doit pas doubler la suivante. */
 async function pollGame() {
   const { profileId, apiKey } = state.settings;
   if (!profileId || polling) return;
   polling = true;
+  // Horloge et partie au départ du sondage : ce qu'AoE4World répond vaut pour ce moment-là.
+  const poll: PollStart = { clock: clock.current(Date.now()), epoch: modeMemory.epoch };
   try {
     const game = await fetchLastGame(profileId, apiKey);
     if (profileId !== state.settings.profileId) return;
+    const wasTraining = mode() === "training";
     state.gameError = null;
     state.game = game;
+    noteOpposition(game, poll, wasTraining);
+    const sawEarlier = lastPollEpoch === poll.epoch && poll.clock !== null;
+    lastPollEpoch = poll.clock !== null ? poll.epoch : null;
     if (game?.ongoing && game.id !== state.handledGameId) {
       state.handledGameId = game.id;
       await journalReady;
-      await startGame(game);
+      // Délai d'AoE4World : mesuré seulement si un sondage précédent de cette partie ne la voyait pas.
+      await startGame(game, sawEarlier ? poll.clock : null);
       return;
     }
   } catch (err) {
@@ -645,8 +775,11 @@ function onVision(event: VisionEvent) {
     const now = Date.now();
     state.hud = { reading, at: now };
     if (engine) {
+      engine.coaching = features().coaching;
+      if (engine.coaching) noteCoached();
       state.engine = engine.update(reading, now);
-      if (state.engine.index > state.step) noteAutoStep();
+      // Le journal ne compte une étape « suivie » que si sa répartition était faite (même en VS).
+      if (state.engine.index > state.step && engine.followed(state.step)) noteAutoStep();
       if (state.engine.index !== state.step) {
         state.step = state.engine.index;
         saveSession();
@@ -663,6 +796,7 @@ function onVision(event: VisionEvent) {
   }
   if (event.type === "clock") {
     if (clock.read(event.seconds, Date.now()) === null) return;
+    noteClock(event.seconds);
     const build = current();
     // L'horloge ne pilote le BO que si le panneau des villageois n'est pas lu, et ne fait
     // jamais reculer : un joueur en avance sur les temps du guide le reste.
@@ -774,7 +908,9 @@ function restoreSession() {
     if (Number.isInteger(s.handledGameId)) state.handledGameId = s.handledGameId;
     if (typeof s.currentId === "string" && state.library.some((b) => b.id === s.currentId)) {
       state.currentId = s.currentId;
-      state.step = Number.isInteger(s.step) ? s.step : 0;
+      // Le BO a pu être réimporté plus court : l'étape reste dans ses limites.
+      const length = state.library.find((b) => b.id === s.currentId)!.build.build_order.length;
+      state.step = Number.isInteger(s.step) ? Math.max(0, Math.min(s.step, length - 1)) : 0;
       state.view = "play";
     }
   } catch {
@@ -801,9 +937,16 @@ function render() {
     fitWindow();
     return;
   }
-  const views = { civs: civsView, civ: civView, settings: settingsView, play: () => playView(current()!), choice: choiceView };
+  const views = {
+    civs: civsView,
+    civ: civView,
+    settings: settingsView,
+    play: () => playView(current()!),
+    choice: choiceView,
+    matchups: matchupsView,
+  };
   const view = state.view === "play" && !current() ? "civs" : state.view === "choice" && !state.offer ? "civ" : state.view;
-  const body = view === "civ" && !state.civ ? civsView() : views[view]();
+  const body = (view === "civ" || view === "matchups") && !state.civ ? civsView() : views[view]();
   app.replaceChildren(view === "play" ? playHeader(current()!) : header(), body);
   fitWindow();
 }
@@ -860,7 +1003,7 @@ function header(): HTMLElement {
   bar.dataset.tauriDragRegion = "";
   const title = h("span", "title", "BoGo", gameStatus());
   title.dataset.tauriDragRegion = "";
-  const actions = h("div", "actions");
+  const actions = h("div", "actions", modePill());
   if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
   actions.append(
     button("⚙", "Réglages", () => (state.view === "settings" ? showLibrary() : showSettings())),
@@ -910,9 +1053,50 @@ function playHeader(saved: SavedBuild): HTMLElement {
   shownReading = reading;
   head.append(
     h("div", "head-row", progress, actions, h("span", "lock-hint", `🔒 ${KEYS.lock}`)),
-    h("div", "meta", where, readingBadge(reading, saved.build.name)),
+    h("div", "meta", where, modeBadge(), readingBadge(reading, saved.build.name)),
   );
   return head;
+}
+
+/** VS, IA… (vérification) ou IA : toujours visible en partie, jamais cliquable en jeu. */
+function modeBadge(): HTMLElement {
+  const { mode: m, why } = modeState();
+  const key = m === "training" ? "training" : why === "checking" ? "checking" : "versus";
+  const badge = h("span", `mode-badge ${key}`, MODE_LABELS[key].badge);
+  badge.title = why === "humans" ? `${MODE_LABELS.versus.title}. Joueur détecté en face : VS jusqu'à la fin de la partie.` : MODE_LABELS[key].title;
+  return badge;
+}
+
+/**
+ * Bascule VS / IA de l'en-tête, hors jeu : à choisir avant une partie contre l'IA. Désactivée
+ * quand un joueur est vu en face, ou sans profil AoE4World (rien ne pourrait être vérifié).
+ */
+function modePill(): HTMLElement {
+  const { mode: m, why } = modeState();
+  if (why === "humans") {
+    const pill = button("VS 🔒", "Joueur détecté en face : VS jusqu'à la fin de la partie.", () => {});
+    pill.className = "mode-badge versus";
+    pill.disabled = true;
+    return pill;
+  }
+  if (!state.settings.profileId) {
+    const pill = button("VS", "Entraînement indisponible : sans profil AoE4World, BoGo ne peut pas vérifier que ce n'est pas une classée.", () => {});
+    pill.className = "mode-badge versus";
+    pill.disabled = true;
+    return pill;
+  }
+  const armed = modeMemory.armed;
+  const title = !armed
+    ? "VS : contre des joueurs, ton BO seulement, sans conseil calculé en direct. Clique avant une partie contre l'IA pour l'entraînement."
+    : m === "training"
+      ? `${MODE_LABELS.training.title}. Revient à VS à la fin de la partie. Clique pour revenir à VS.`
+      : modeMemory.lastClock && Date.now() - modeMemory.lastClock.at < 60_000
+        ? `${MODE_LABELS.checking.title}. Clique pour revenir à VS.`
+        : "Entraînement contre l'IA pour ta prochaine partie. BoGo vérifie d'abord sur AoE4World que ce n'est ni une classée ni une partie rapide (1 min de jeu). Clique pour revenir à VS.";
+  const label = !armed ? "VS" : m === "training" ? "IA" : "IA…";
+  const pill = button(label, title, () => setTraining(!armed));
+  pill.className = `mode-badge ${!armed ? "versus" : m === "training" ? "training" : "checking"}`;
+  return pill;
 }
 
 type ReadingState = "ok" | "clock" | "off" | "stopped" | "waiting" | "manual";
@@ -962,12 +1146,16 @@ function playView(saved: SavedBuild): HTMLElement {
   const hud = hudIsFresh() ? state.hud!.reading : null;
   const auto = hud && state.engine?.index === state.step ? state.engine : null;
   const translate = shouldTranslate(saved);
+  // Versus : rien de calculé sur la partie en cours, seulement le BO tel qu'il est écrit.
+  const f = features();
+  const live = projectLive(f, hud, auto);
 
   const view = h("main", "play");
   const reading = readingState();
+  if (modeNotice && Date.now() < modeNotice.until) view.append(h("div", "alert warn", modeNotice.text));
   if (reading === "off") view.append(h("div", "alert warn", `Suivi auto coupé : avance avec ${KEYS.next}`));
   if (reading === "stopped") view.append(h("div", "alert", "Lecture de l'écran arrêtée : voir ⚙"));
-  const alert = alertBanner(auto, hud);
+  const alert = f.alerts ? alertBanner(live.engine, live.hud) : null;
   if (alert) view.append(alert);
   // Icônes déjà nommées en grand au-dessus : pas de nom répété dans les consignes.
   const named = new Set<string>();
@@ -976,15 +1164,15 @@ function playView(saved: SavedBuild): HTMLElement {
   const goal = auto ? auto.goal : stepGoal(steps, state.step);
   if (goal.kind !== "villagers") {
     const cost = auto ? auto.cost : (goalCosts(goal, playedCivilization(saved))[0] ?? null);
-    view.append(goalBlock(goal, cost, hud?.stock ?? null, auto?.affordable ?? false, step, named));
+    view.append(goalBlock(goal, cost, live.hud?.stock ?? null, live.engine?.affordable ?? false, step, named));
   } else {
-    const hero = heroBlock(steps, hud, named);
+    const hero = heroBlock(steps, f.liveHero ? live.hud : null, live.engine?.villagers ?? null, named);
     if (hero) view.append(hero);
-    view.append(bulletList(step, effectiveVillagerTargets(steps)[state.step], hud));
+    view.append(bulletList(step, effectiveVillagerTargets(steps)[state.step], live.hud, live.engine?.villagers ?? null));
     // Villageois en plus sans la répartition de l'étape (attaque, choix du joueur) : BoGo ne
     // saute pas l'étape tout seul, il propose de le faire.
-    if (auto && auto.drift >= DRIFT_HINT) {
-      view.append(h("div", "drift", `+${auto.drift} villageois sans suivre cette étape : ${KEYS.next} pour passer à la suite`));
+    if (f.drift && live.engine && live.engine.drift >= DRIFT_HINT) {
+      view.append(h("div", "drift", `+${live.engine.drift} villageois sans suivre cette étape : ${KEYS.next} pour passer à la suite`));
     }
   }
   view.append(notes(step.notes, "notes", translate, named));
@@ -1025,8 +1213,9 @@ const RESOURCE_PLACE: Record<Resource, string> = {
  * Où envoyer le prochain villageois produit (point de ralliement) : une grande icône, sans
  * chiffre (voir `heroModel`). Les icônes nommées ici ne le sont plus dans les consignes.
  */
-function heroBlock(steps: BuildOrderStep[], hud: HudReading | null, named: Set<string>): HTMLElement | null {
-  const hero = heroModel(steps, state.step, hud?.gatherers ?? null, state.engine?.villagers ?? null);
+function heroBlock(steps: BuildOrderStep[], hud: HudReading | null, villagers: number | null, named: Set<string>): HTMLElement | null {
+  // Sans lecture (ou en Versus) : la ressource que l'étape ajoute, telle qu'écrite.
+  const hero = heroModel(steps, state.step, hud?.gatherers ?? null, hud ? villagers : null);
   if (!hero) return null;
   for (const path of hero.named) named.add(path);
   const fallback = hero.resource ? RESOURCE_ICONS[hero.resource][0] : "🔨";
@@ -1088,9 +1277,9 @@ function playedCivilization(saved: SavedBuild): string {
 }
 
 /** Barres réel / cible : villageois, puis chaque ressource utile à l'étape. */
-function bulletList(step: BuildOrderStep, vilTarget: number, hud: HudReading | null): HTMLElement {
+function bulletList(step: BuildOrderStep, vilTarget: number, hud: HudReading | null, estimated: number | null): HTMLElement {
   const list = h("div", "bullets");
-  const villagers = state.engine?.villagers ?? hud?.villagers ?? null;
+  const villagers = hud ? (estimated ?? hud.villagers) : null;
   if (vilTarget > 0) list.append(bulletRow("villagers", hud ? villagers : null, vilTarget));
   for (const r of RESOURCES) {
     const target = step.resources[r];
@@ -1119,7 +1308,8 @@ function bulletRow(
   const iconEl = key === "villagers" ? gameIcon(VILLAGER_ICON, "👤") : resourceIcon(key);
   const row = h("div", `bullet ${key}`, iconEl);
   if (have === null) {
-    row.append(h("div", "label", name[0].toUpperCase() + name.slice(1)), h("div", "value num", `${target}`, h("small", "", " visés")));
+    // Un coût est un montant ; une cible de villageois est « visée ».
+    row.append(h("div", "label", name[0].toUpperCase() + name.slice(1)), h("div", "value num", `${target}`, cost ? "" : h("small", "", " visés")));
     return row;
   }
   const track = h("div", "track");
@@ -1160,7 +1350,8 @@ function miniView(): HTMLElement {
   if (saved) pill.append(h("span", "muted", saved.build.name));
   const gameTime = clock.current(Date.now());
   if (gameTime !== null) pill.append(h("span", "clock", `⏱ ${formatClock(gameTime)}`));
-  const hud = hudIsFresh() ? state.hud!.reading : null;
+  if (mode() === "training") pill.append(h("span", "mode-badge training", MODE_LABELS.training.badge));
+  const hud = projectLive(features(), hudIsFresh() ? state.hud!.reading : null, null).hud;
   if (hud && hud.idle > 0) pill.append(h("span", "warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} inactif${hud.idle > 1 ? "s" : ""}`));
   pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()));
   for (const child of pill.querySelectorAll("span")) child.dataset.tauriDragRegion = "";
@@ -1249,8 +1440,36 @@ function showSettings() {
   else render();
 }
 
+const NOTICE_KEY = "bogo.notice.v1";
+
+/** Une fois, après la mise à jour : en VS, les alertes ne sont plus là, et c'est voulu. */
+function newsCard(): HTMLElement | "" {
+  try {
+    if (JSON.parse(localStorage.getItem(NOTICE_KEY) ?? "null") === "modes") return "";
+  } catch {
+    return "";
+  }
+  const ok = button("Compris", "Ne plus afficher", () => {
+    store(NOTICE_KEY, "modes");
+    render();
+  });
+  return h(
+    "div",
+    "news",
+    h("strong", "", "Nouveau : deux modes"),
+    h(
+      "p",
+      "",
+      "Contre des joueurs (VS, par défaut), BoGo n'affiche plus que ton BO, sans alertes ni comptes en direct. " +
+        "Pour t'entraîner avec tout le coaching, clique VS → IA en haut avant une partie contre l'IA.",
+    ),
+    ok,
+  );
+}
+
 function civsView(): HTMLElement {
   const view = h("main", "civs");
+  view.append(newsCard());
   if (state.game?.ongoing) view.append(gameBanner(state.game));
 
   const grid = h("div", "civ-grid");
@@ -1269,8 +1488,11 @@ function civsView(): HTMLElement {
 function civView(): HTMLElement {
   const civ = state.civ;
   const view = h("main", "civ");
+  view.append(newsCard());
   const back = button("←", "Toutes les civilisations", () => showLibrary(""));
-  view.append(h("div", "civ-header", back, flag(civ), h("strong", "", civ)));
+  const rules = state.matchups.rules.filter((r) => r.civ === civ).length;
+  const matchups = button(rules ? `🎯 Matchups (${rules})` : "🎯 Matchups", `BO de base et règles contre une civ ou sur une carte, pour ${civ}`, () => showMatchups());
+  view.append(h("div", "civ-header", back, flag(civ), h("strong", "", civ), h("span", "spacer"), matchups));
   if (state.game?.ongoing && state.game.myCivilization === civ) view.append(gameBanner(state.game));
 
   const tabs = h("div", "tabs");
@@ -1281,7 +1503,9 @@ function civView(): HTMLElement {
   }
   view.append(tabs);
 
-  const builds = filterBuilds(state.library, civ, state.style);
+  // Le BO de base de la civ (📌) en tête de liste.
+  const baseId = state.matchups.base[civ];
+  const builds = filterBuilds(state.library, civ, state.style).sort((a, b) => Number(b.id === baseId) - Number(a.id === baseId));
   const list = h("ul", "builds");
   if (builds.length === 0) list.append(h("li", "empty", "Aucun BO ici. Trouve-en un sur aoe4guides ou importe un lien."));
   for (const b of builds) {
@@ -1289,19 +1513,183 @@ function civView(): HTMLElement {
       "div",
       "build-info",
       h("span", "build-name", b.build.name),
-      h("span", "build-meta", `${STYLES[b.style]}${b.build.author ? ` · ${b.build.author}` : ""}`),
+      h("span", "build-meta", `${b.id === baseId ? "Base · " : ""}${STYLES[b.style]}${b.build.author ? ` · ${b.build.author}` : ""}`),
     );
-    const del = button("🗑", "Supprimer", () => {
+    const uses = matchupUses(b.id);
+    const del = button("🗑", uses ? `Supprimer ? Utilisé par tes matchups (${uses}) : ils seront retirés` : "Supprimer", () => {
+      // Utilisé par tes matchups : un second clic dans les 3 s, comme pour quitter.
+      if (uses && !del.dataset.confirm) {
+        del.dataset.confirm = "1";
+        del.textContent = "Supprimer ?";
+        del.classList.add("confirm");
+        setTimeout(() => {
+          delete del.dataset.confirm;
+          del.textContent = "🗑";
+          del.classList.remove("confirm");
+        }, 3000);
+        return;
+      }
       state.library = removeBuild(state.library, b.id);
       saveLibrary(localStorage, state.library);
+      // Le BO supprimé sort aussi de tes matchups.
+      state.matchups = forgetBuild(state.matchups, b.id);
+      saveMatchups(localStorage, state.matchups);
       if (state.currentId === b.id) state.currentId = null;
       render();
     });
-    list.append(h("li", "build", info, button("▶", "Jouer ce BO", () => play(b.id)), del));
+    const isBase = state.matchups.base[civ] === b.id;
+    const pin = button("📌", isBase ? `BO de base pour ${civ} : clique pour le retirer` : `En faire le BO de base pour ${civ} (présélectionné au début de la partie)`, () => setBase(civ, isBase ? null : b.id));
+    pin.className = isBase ? "pin on" : "pin";
+    list.append(h("li", "build", pin, info, button("▶", "Jouer ce BO", () => play(b.id)), del));
   }
   view.append(list, guidesButton(), importForm());
   return view;
 }
+
+function showMatchups() {
+  state.view = "matchups";
+  if (state.locked) setLocked(false);
+  else render();
+}
+
+function setBase(civ: string, buildId: string | null) {
+  const base = { ...state.matchups.base };
+  if (buildId) base[civ] = buildId;
+  else delete base[civ];
+  updateMatchups({ ...state.matchups, base });
+}
+
+function updateMatchups(matchups: Matchups) {
+  state.matchups = matchups;
+  saveMatchups(localStorage, matchups);
+  render();
+}
+
+/** Règle lisible : « contre French · sur Dry Arabia », « toutes les parties ». */
+function ruleLabel(rule: MatchupRule): string {
+  return [rule.opponent ? `contre ${rule.opponent}` : "", rule.map ? `sur ${rule.map}` : ""].filter(Boolean).join(" · ") || "toutes les parties";
+}
+
+/** « 📌 BO de base, 2 règles » : ce qu'une suppression retirerait des matchups. */
+function matchupUses(buildId: string): string {
+  const base = Object.values(state.matchups.base).includes(buildId);
+  const rules = state.matchups.rules.filter((r) => r.buildId === buildId).length;
+  return [base ? "📌 BO de base" : "", rules ? `${rules} règle${rules > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ");
+}
+
+/** Ce que BoGo choisirait pour cette civ adverse et cette carte, en une phrase. */
+function matchupPreview(civ: string, opponent: string | null, map: string | null): string {
+  const builds = filterBuilds(state.library, civ, "");
+  const pick = matchupPick(state.matchups, { kind: "rm_1v1", civ, opponentCiv: opponent, map: map ?? "" }, (id) => builds.some((b) => b.id === id));
+  // Sans carte tapée, les règles de carte de la civ passent avant : « sur les autres cartes ».
+  const mapRules = state.matchups.rules.some((r) => r.civ === civ && r.map);
+  const where = `${opponent ? `Contre ${opponent}` : "Contre toutes les civs"}, ${map ? `sur ${map}` : mapRules ? "sur les autres cartes" : "sur toutes les cartes"}`;
+  if (!pick) return `${where} : BoGo choisit d'après tes parties.`;
+  const name = builds.find((b) => b.id === pick.buildId)?.build.name ?? "?";
+  const why = pick.rule ? `ta règle ${ruleLabel(pick.rule)}` : "📌 BO de base";
+  const conflict = pick.conflict ? `, elle passe avant ta règle ${ruleLabel(pick.conflict)}` : "";
+  return `${where} : ${name} (${why}${conflict}).`;
+}
+
+/**
+ * Mes matchups pour la civ choisie : le BO de base (📌), puis des règles « contre telle civ,
+ * sur telle carte → ce BO ». Au début d'une partie, la règle la plus précise présélectionne
+ * le BO sur l'écran de choix. Tout est enregistré à chaque changement.
+ */
+function matchupsView(): HTMLElement {
+  const civ = state.civ;
+  if (draft.civ !== civ) draft = { civ, opponent: "", map: "" };
+  const view = h("main", "matchups");
+  const back = button("←", `BO de ${civ}`, () => showLibrary(civ));
+  view.append(h("div", "civ-header", back, flag(civ), h("strong", "", `Matchups · ${civ}`)));
+  const builds = filterBuilds(state.library, civ, "");
+  if (builds.length === 0) {
+    view.append(h("p", "empty", "Ajoute d'abord des BO pour cette civ : les matchups choisissent parmi eux."));
+    return view;
+  }
+  const options: [string, string][] = builds.map((b) => [b.id, `${b.build.name} · ${STYLES[b.style]}`]);
+
+  const base = select([["", "Aucun : BoGo choisit d'après tes parties"], ...options], state.matchups.base[civ] ?? "", (id) => setBase(civ, id || null));
+  view.append(h("label", "field", "📌 BO de base, sans question de matchup", base));
+
+  // Dans l'ordre où BoGo les lit (PRECEDENCE) : la première qui va avec ta partie gagne.
+  const rules = state.matchups.rules
+    .filter((r) => r.civ === civ)
+    .sort((a, b) => PRECEDENCE.indexOf(ruleMatch(a)) - PRECEDENCE.indexOf(ruleMatch(b)));
+  const list = h("ul", "rules");
+  for (const rule of rules) {
+    const choice = select(builds.some((b) => b.id === rule.buildId) ? options : [[rule.buildId, "BO supprimé"], ...options], rule.buildId, (id) =>
+      updateMatchups({ ...state.matchups, rules: state.matchups.rules.map((r) => (r.id === rule.id ? { ...r, buildId: id } : r)) }),
+    );
+    const del = button("🗑", "Supprimer cette règle", () =>
+      updateMatchups({ ...state.matchups, rules: state.matchups.rules.filter((r) => r.id !== rule.id) }),
+    );
+    list.append(h("li", "rule", h("div", "rule-text", h("span", "when", ruleLabel(rule)), choice), del));
+  }
+  view.append(rules.length ? list : h("p", "empty", "Exemple : contre French sur Dry Arabia → ton BO anti-cavalerie."));
+
+  // Nouvelle règle : civ adverse et/ou carte, puis le BO (le choisir enregistre la règle).
+  // Le brouillon survit aux redessins (changement du 📌, d'une autre règle, fin du choix…).
+  const opponent = select([["", "Toutes les civs adverses"], ...CIVILIZATIONS.map((c): [string, string] => [c, `contre ${c}`])], draft.opponent, () => {
+    draft.opponent = opponent.value;
+    refresh();
+  });
+  const map = h("input");
+  map.placeholder = "Toutes les cartes";
+  map.value = draft.map;
+  map.setAttribute("list", "bogo-maps");
+  map.oninput = () => {
+    draft.map = map.value;
+    refresh();
+  };
+  const seen = journal.map((e) => e.map).filter(Boolean);
+  const known = new Map<string, string>();
+  for (const m of [...seen.reverse(), ...MAP_SUGGESTIONS]) if (!known.has(mapKey(m))) known.set(mapKey(m), m);
+  const maps = h("datalist");
+  maps.id = "bogo-maps";
+  for (const m of known.values()) maps.append(Object.assign(h("option"), { value: m }));
+  const bo = select([["", "Choisis le BO…"], ...options], "", (id) => id && addRule(id));
+  const preview = h("p", "hint");
+  const message = h("p", "status");
+  function refresh() {
+    const ready = !!opponent.value || !!map.value.trim();
+    bo.disabled = !ready;
+    bo.title = ready ? "" : "Choisis d'abord une civ adverse ou une carte";
+    const typed = map.value.trim();
+    message.className = "status";
+    message.textContent = typed && !known.has(mapKey(typed)) ? "Carte inconnue de BoGo : vérifie qu'elle est écrite comme sur AoE4World." : "";
+    preview.textContent = matchupPreview(civ, opponent.value || null, typed || null);
+  }
+  function addRule(buildId: string) {
+    const rule: MatchupRule = { id: newRuleId(), civ, opponent: opponent.value || null, map: map.value.trim() || null, buildId };
+    // Même situation déjà réglée : la nouvelle règle la remplace.
+    const same = (r: MatchupRule) => r.civ === civ && r.opponent === rule.opponent && mapKey(r.map ?? "") === mapKey(rule.map ?? "");
+    const replaced = state.matchups.rules.some(same);
+    const name = builds.find((b) => b.id === buildId)?.build.name ?? "";
+    matchupStatus = `Règle ${replaced ? "remplacée" : "ajoutée"} : ${ruleLabel(rule)} → ${name}`;
+    draft = { civ, opponent: "", map: "" };
+    updateMatchups({ ...state.matchups, rules: [...state.matchups.rules.filter((r) => !same(r)), rule] });
+  }
+  refresh();
+  if (matchupStatus) {
+    message.textContent = matchupStatus;
+    matchupStatus = "";
+  }
+  view.append(
+    h("div", "add-rule", h("strong", "", "＋ Nouvelle règle"), opponent, map, maps, bo, preview, message),
+    h(
+      "p",
+      "hint",
+      "BoGo lit de haut en bas : la première règle qui va avec ta partie gagne, sinon 📌. Une carte passe avant une civ adverse (carte d'eau). « Contre » : 1v1 classé ou rapide. En équipe : 📌 seulement. Un BO lancé avant la partie passe avant tout.",
+    ),
+  );
+  return view;
+}
+
+/** Message après un ajout de règle (la vue est redessinée). */
+let matchupStatus = "";
+/** Règle en cours de saisie dans l'éditeur. */
+let draft = { civ: "", opponent: "", map: "" };
 
 function flag(civ: string): HTMLImageElement {
   const img = document.createElement("img");
@@ -1445,7 +1833,9 @@ function visionText(): string {
   const time = clock.current(Date.now());
   const parts: string[] = [];
   if (time !== null) parts.push(`horloge ${formatClock(time)}`);
-  if (hudIsFresh()) {
+  // Versus : pas de comptes lus en direct, même dans les réglages (ouverts en pleine partie).
+  if (hudIsFresh() && !features().liveCounts) parts.push("panneau des villageois lu");
+  if (hudIsFresh() && features().liveCounts) {
     const r = state.hud!.reading;
     const gatherers = RESOURCES.map((res) => `${RESOURCE_ICONS[res][0]}${r.gatherers[res]}`).join(" ");
     parts.push(`${r.villagers} villageois (${gatherers}, ${r.idle} inactif${r.idle > 1 ? "s" : ""})`);
@@ -1501,6 +1891,7 @@ function choiceView(): HTMLElement {
   const banner = gameBanner(game);
   banner.querySelector("strong")?.prepend(flag(game.myCivilization));
   view.append(banner);
+  if (modeNotice && Date.now() < modeNotice.until) view.append(h("p", "hint", modeNotice.text));
   if (advice) {
     const card = h(
       "div",
@@ -1510,6 +1901,18 @@ function choiceView(): HTMLElement {
       h("span", "build-meta", STYLES[advice.build.style]),
       h("span", "fact", advice.reason),
     );
+    if (advice.also) {
+      const key = CHOICE_STYLES.find(([style]) => picks[style]?.id === advice.also!.build.id)?.[1];
+      const other = advice.also.build;
+      card.append(
+        h(
+          "span",
+          "fact also",
+          `Ta règle ${advice.also.rule} dit : ${other.build.name}${key ? ` · ${KEYS[key]}` : ""} `,
+          button("▶", `Lancer ${other.build.name}`, () => play(other.id)),
+        ),
+      );
+    }
     const go = button(`▶ Lancer · ${KEYS.launch}`, "Lancer ce BO maintenant", () => play(advice.build.id));
     go.className = "primary go";
     card.append(go, countdownLine());
@@ -1628,6 +2031,13 @@ function settingsView(): HTMLElement {
         ? "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"
         : "Lecture de l'écran : bientôt sous Windows. En attendant, suivi manuel avec les raccourcis.",
     ),
+    h(
+      "p",
+      "hint",
+      "Deux modes. VS, par défaut, contre des joueurs : ton BO et ses pages qui tournent toutes seules, rien de " +
+        "calculé sur ta partie. IA, à choisir avant une partie contre l'IA (bouton VS / IA en haut) : en plus, alertes " +
+        "de répartition et d'inactifs, comptes réel / cible, stock du passage d'âge. Jamais en classée ni en partie rapide.",
+    ),
     h("label", "scale", "Taille de BoGo ", scaleValue, scale),
     hotkeySettings(),
     visionStatus(),
@@ -1636,7 +2046,7 @@ function settingsView(): HTMLElement {
     h("label", "checkbox", showNext, "Montrer aussi l'étape suivante (« Ensuite ») pendant la partie"),
     h("label", "checkbox", record, "Enregistrer mes parties (lectures de l'écran) pour les rejouer et régler BoGo hors ligne"),
     recordingStatus(),
-    stepLog(),
+    features().liveCounts ? stepLog() : "",
     save,
     message,
     h("p", "hint", hotkeyHint()),

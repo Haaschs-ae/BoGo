@@ -37,7 +37,7 @@ const game = (launches: Launch[], over: Partial<GameEntry> = {}): GameEntry => (
   ...over,
 });
 const launch = (buildId: string, clock = 5, how: Launch["how"] = "choice"): Launch => ({ buildId, how, clock });
-const duel = { kind: "rm_1v1", civ: "English", randomCiv: false, opponentCiv: "French" };
+const duel = { kind: "rm_1v1", civ: "English", randomCiv: false, opponentCiv: "French", map: "Dry Arabia" };
 
 describe("journal", () => {
   it("garde le BO actif à 4:00, ou au premier passage d'âge", () => {
@@ -134,6 +134,38 @@ describe("conseil de BO", () => {
     expect(adviseBuild(library, played, duel, NOW)?.autoOff).toBeNull();
     const refused = played.map((e) => ({ ...e, refused: true }));
     expect(adviseBuild(library, refused, duel, NOW)?.autoOff).toBe("annulé les 2 dernières fois");
+  });
+
+  it("tes matchups passent avant ce que BoGo déduit, et peuvent partir tout seuls", () => {
+    const library = [saved("a", "boom", 1), saved("b", "agressif", 2), { ...saved("short"), build: bo("short", "English", 3) }];
+    const habitual = [game([launch("a")]), game([launch("a")])];
+    const matchups = {
+      base: { English: "b" },
+      rules: [{ id: "r", civ: "English", opponent: "French", map: "Dry Arabia", buildId: "short" }],
+    };
+    // Règle complète : même un BO court (choix explicite), lancé tout seul même jamais joué.
+    expect(adviseBuild(library, habitual, duel, NOW, matchups)).toMatchObject({
+      rule: "matchups",
+      reason: "Tes matchups : contre French sur Dry Arabia",
+      autoOff: null,
+    });
+    // Sinon le BO de base, avant l'habitude.
+    const base = adviseBuild(library, habitual, { ...duel, map: "Lipany" }, NOW, matchups);
+    expect(base).toMatchObject({ rule: "matchups", reason: "📌 Ton BO de base avec English" });
+    expect(base?.build.id).toBe("b");
+    // Carte et civ adverse se contredisent : la carte gagne, l'autre BO est proposé, pas de lancement auto.
+    const conflicting = {
+      base: {},
+      rules: [
+        { id: "m", civ: "English", opponent: null, map: "Migration", buildId: "a" },
+        { id: "o", civ: "English", opponent: "French", map: null, buildId: "b" },
+      ],
+    };
+    const both = adviseBuild(library, habitual, { ...duel, map: "Migration" }, NOW, conflicting);
+    expect(both).toMatchObject({ reason: "Tes matchups : sur Migration", autoOff: "2 règles de tes matchups s'appliquent", also: { rule: "contre French" } });
+    expect(both?.also?.build.id).toBe("b");
+    // Les garde-fous restent : jamais tout seul en équipe.
+    expect(adviseBuild(library, habitual, { ...duel, kind: "rm_2v2", opponentCiv: null }, NOW, matchups)?.autoOff).toBe("partie en équipe");
   });
 
   it("civ aléatoire dite dans la raison", () => {

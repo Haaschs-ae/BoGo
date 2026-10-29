@@ -1,28 +1,36 @@
-// Conseil de BO au début de la partie (écran de choix), d'après ta bibliothèque et ton journal
-// local. Dans l'ordre : ta mémoire contre la civ adverse (1v1), ton habitude avec la civ, ta
-// bibliothèque. Le BO choisi avant la partie passe avant tout (main.ts). Voir docs/conseil-bo.md.
+// Conseil de BO au début de la partie (écran de choix). Dans l'ordre : tes matchups (réglés
+// avant la partie : règle la plus précise, puis le BO de base de la civ), ta mémoire contre la
+// civ adverse (1v1), ton habitude avec la civ, ta bibliothèque. Ce que tu as réglé passe avant
+// ce que BoGo déduit. Le BO choisi avant la partie passe avant tout (main.ts).
+// Voir docs/conseil-bo.md et docs/profil-et-modes.md.
 
 import type { BuildOrder } from "./buildOrder";
 import { distributionGap, plannedBuilders } from "./distribution";
 import type { HudReading } from "./hud";
 import { habitLaunch, keptLaunch, launchWeight, type GameEntry } from "./journal";
 import { filterBuilds, STYLES, type SavedBuild, type Style } from "./library";
+import { matchupPick, matchupReason, type Matchups } from "./matchups";
 
 export interface AdviceGame {
   kind: string;
   civ: string;
   randomCiv: boolean;
-  /** Civ adverse, en 1v1 seulement. */
+  /** Civ adverse, en 1v1 classé ou rapide seulement. */
   opponentCiv: string | null;
+  map: string;
+  /** Plusieurs joueurs listés en face ou à côté (personnalisée à plusieurs). */
+  team?: boolean;
 }
 
 export interface Advice {
   build: SavedBuild;
-  rule: "memory" | "habit" | "library";
+  rule: "matchups" | "memory" | "habit" | "library";
   /** « Choisi car » : un fait vérifiable, pas un classement. */
   reason: string;
   /** Pourquoi il ne sera pas lancé tout seul, ou null (lancé après le compte à rebours). */
   autoOff: string | null;
+  /** Tes matchups se contredisent : l'autre BO et la règle qui le dit (« contre French »). */
+  also?: { build: SavedBuild; rule: string };
 }
 
 export const COUNTDOWN_SECONDS = 8;
@@ -109,8 +117,27 @@ function memory(entries: GameEntry[], game: AdviceGame, builds: SavedBuild[], no
 }
 
 /** BO conseillé pour cette partie, ou null (aucun BO utilisable, Empire Wars, Nomade). */
-export function adviseBuild(library: SavedBuild[], journal: GameEntry[], game: AdviceGame, now: number): Advice | null {
+export function adviseBuild(
+  library: SavedBuild[],
+  journal: GameEntry[],
+  game: AdviceGame,
+  now: number,
+  matchups: Matchups = { base: {}, rules: [] },
+): Advice | null {
   if (noAdvice(game.kind) || !game.civ) return null;
+  // Tes matchups : un choix explicite, jouable avec la civ même s'il est court ou peu rempli.
+  const playable = filterBuilds(library, game.civ, "");
+  const pick = matchupPick(matchups, game, (id) => playable.some((b) => b.id === id));
+  if (pick) {
+    const build = playable.find((b) => b.id === pick.buildId)!;
+    const reason = (game.randomCiv ? "Civ aléatoire · " : "") + matchupReason(pick, game);
+    const other = pick.conflict && playable.find((b) => b.id === pick.conflict!.buildId);
+    // Deux règles se contredisent (carte et civ adverse) : la carte l'emporte, sans lancement auto.
+    if (other && pick.conflict) {
+      return { build, rule: "matchups", reason, autoOff: "2 règles de tes matchups s'appliquent", also: { build: other, rule: `contre ${pick.conflict.opponent}` } };
+    }
+    return { build, rule: "matchups", reason, autoOff: autoLaunchBlocker(build, journal, game, true) };
+  }
   const builds = candidates(library, game.civ);
   if (builds.length === 0) return null;
   const entries = history(journal, game);
@@ -137,12 +164,13 @@ export function adviseBuild(library: SavedBuild[], journal: GameEntry[], game: A
 
 /**
  * Garde-fous du lancement automatique connus dès la détection. Ceux du moment (horloge,
- * BoGo masqué ou réduit, répartition à l'écran) sont vérifiés par l'interface.
+ * BoGo masqué ou réduit, répartition à l'écran) sont vérifiés par l'interface. Un BO de tes
+ * matchups (`chosen`) est ton choix : il peut partir tout seul même s'il n'a jamais été joué.
  */
-export function autoLaunchBlocker(build: SavedBuild, journal: GameEntry[], game: AdviceGame): string | null {
+export function autoLaunchBlocker(build: SavedBuild, journal: GameEntry[], game: AdviceGame, chosen = false): string | null {
   if (isCustom(game.kind)) return "partie personnalisée";
-  if (game.kind !== "rm_1v1" && game.kind !== "qm_1v1") return "partie en équipe";
-  if (!journal.some((e) => counted(e) === build.id)) return "BO jamais joué";
+  if (game.kind !== "rm_1v1" && game.kind !== "qm_1v1") return /_[2-4]v[2-4]/.test(game.kind) ? "partie en équipe" : "pas un 1v1 classé ou rapide";
+  if (!chosen && !journal.some((e) => counted(e) === build.id)) return "BO jamais joué";
   const lastTwo = history(journal, game).slice(0, 2);
   if (lastTwo.length === 2 && lastTwo.every((e) => e.refused)) return "annulé les 2 dernières fois";
   return null;
