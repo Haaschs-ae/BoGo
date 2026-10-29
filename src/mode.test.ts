@@ -29,6 +29,7 @@ const game = (kind: string, opponents: string[], startedSecondsAgo = 100, ongoin
   randomCiv: false,
   opponentCivilizations: opponents,
   oneVsOne: opponents.length === 1,
+  players: opponents.length + 1,
 });
 const input = (over: Partial<ModeInput>): ModeInput => ({
   armed: true,
@@ -37,6 +38,7 @@ const input = (over: Partial<ModeInput>): ModeInput => ({
   fresh: false,
   profileSet: true,
   checkedAtClock: null,
+  inGame: true,
   ...over,
 });
 
@@ -185,6 +187,22 @@ describe("cycle de vie du choix « IA »", () => {
     ({ memory } = tick(memory, 1, 5, start));
     memory = aoe4worldSeen(memory, finished, poll, 5, start + 5_000, false).memory;
     expect(memory.checkedAtClock).toBeNull();
+  });
+
+  it("rien de vérifié dans les menus ; une partie IA finie ne laisse rien pour la suivante", () => {
+    expect(decideMode(input({ checkedAtClock: 600, inGame: false })).mode).toBe("versus");
+    const start = NOW;
+    let memory = arm(freshMemory(), true, start);
+    ({ memory } = tick(memory, 1, 70, start));
+    memory = aoe4worldSeen(memory, finished, { clock: 65, epoch: memory.epoch }, 70, start + 70_000, false).memory;
+    expect(currentMode(memory, finished, 70, true, start + 70_000).mode).toBe("training");
+    // Trois minutes sans horloge : la partie est finie, le choix tombe.
+    memory = aoe4worldSeen(memory, finished, { clock: null, epoch: memory.epoch }, null, start + 250_000, false).memory;
+    expect(memory).toMatchObject({ armed: false, checkedAtClock: null });
+    // Réarmé dans les menus : tout est à revérifier.
+    memory = arm(memory, true, start + 260_000);
+    expect(memory.checkedAtClock).toBeNull();
+    expect(currentMode(memory, finished, null, true, start + 260_000).why).toBe("checking");
   });
 
   it("un choix « IA » oublié dans les menus tombe après 15 min", () => {

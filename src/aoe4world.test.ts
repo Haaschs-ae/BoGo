@@ -31,6 +31,7 @@ describe("parseLastGame", () => {
       randomCiv: false,
       opponentCivilizations: ["English", "Zhu Xi's Legacy"],
       oneVsOne: false,
+      players: 4,
     });
   });
 

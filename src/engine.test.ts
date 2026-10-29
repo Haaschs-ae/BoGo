@@ -310,6 +310,27 @@ describe("BuildEngine", () => {
     expect(state.affordable).toBe(false);
   });
 
+  it("Versus : une étape sans nouveau villageois (déplacement, bâtiment) attend le villageois suivant", () => {
+    const withMoves = [
+      step(6, { food: 6 }),
+      step(9, { food: 6, wood: 3 }),
+      step(9, { food: 4, wood: 3, gold: 2 }, ["2 des moutons vers l'or"]),
+      step(-1, { food: -1, wood: -1, gold: -1, stone: -1 }, ["Construis un moulin"]),
+      step(12, { food: 4, wood: 6, gold: 2 }),
+    ];
+    const engine = new BuildEngine(withMoves, "English");
+    engine.coaching = false;
+    engine.setStep(1);
+    // Le 10e villageois : on passe au déplacement, et on y reste tant qu'il n'en vient pas d'autre.
+    let state = feed(engine, reading({ food: 7, wood: 3 }), 0, 6);
+    expect(state.index).toBe(2);
+    state = feed(engine, reading({ food: 7, wood: 3 }), 6000, 20);
+    expect(state.index).toBe(2);
+    // Un 11e villageois : la page tourne vers le moulin.
+    state = feed(engine, reading({ food: 6, wood: 3, gold: 2 }), 26000, 6);
+    expect(state.index).toBe(3);
+  });
+
   it("ne signale pas les villageois qui attendent de construire (bâtisseurs prévus) : vu en partie", () => {
     const withBuilders = [step(21, { food: 6, wood: 0, gold: 7, builder: 8 })];
     const engine = new BuildEngine(withBuilders, "English");

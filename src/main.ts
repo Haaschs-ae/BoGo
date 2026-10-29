@@ -60,6 +60,7 @@ import {
 } from "./matchups";
 import {
   aoe4worldSeen,
+  freshGame,
   type PollStart,
   arm,
   clockRead,
@@ -389,9 +390,7 @@ function noteOpposition(game: DetectedGame | null, poll: PollStart, wasTraining:
 }
 
 /** BO lancé entre deux parties : ton choix pour la suivante, gardé tel quel à la détection. */
-let preChosen: { id: string; at: number } | null = null;
-/** Au-delà, un BO lancé avant la partie n'est plus « ton choix pour celle-ci » (essai, révision). */
-const PRECHOSEN_MS = 15 * 60_000;
+let preChosen: string | null = null;
 /** Raccourcis de choix actifs 5 min au plus quand aucun passage d'âge n'est vu (Windows). */
 const CHOICE_MS = 5 * 60_000;
 const REFUSED = "annulé";
@@ -412,7 +411,7 @@ function noteLaunch(id: string, how: LaunchHow) {
     entry.launches.push({ buildId: id, how, clock: Math.round(gameClock().seconds) });
     saveJournal();
   } else if (!state.game?.ongoing) {
-    preChosen = { id, at: Date.now() };
+    preChosen = id;
   }
 }
 
@@ -434,8 +433,8 @@ async function startGame(game: DetectedGame, seenAtClock: number | null = null) 
   entry.seenAtClock = seenAtClock;
   journal.push(entry);
   saveJournal();
-  // Choisi avant la partie : lancé il y a moins de 15 min et toujours affiché (même réduit).
-  const pre = preChosen && Date.now() - preChosen.at <= PRECHOSEN_MS && state.view === "play" ? preChosen.id : null;
+  // Choisi avant la partie : il reste ton choix tant qu'il est le BO en cours (voir plus bas).
+  const pre = preChosen;
   preChosen = null;
   const adviceGame = {
     kind: game.kind,
@@ -443,8 +442,8 @@ async function startGame(game: DetectedGame, seenAtClock: number | null = null) 
     randomCiv: game.randomCiv,
     opponentCiv: soloOpponent(game),
     map: game.map,
-    // Personnalisée à plusieurs (AoE4World omet les IA) : comme une partie en équipe.
-    team: !game.oneVsOne && game.opponentCivilizations.length > 0,
+    // Personnalisée à plusieurs (AoE4World omet les IA) : plus d'un joueur listé hors 1v1, en face ou à côté.
+    team: !game.oneVsOne && game.players > 1,
   };
   const past = journal.filter((e) => e !== entry);
   if (pre && pre === state.currentId && filterBuilds(state.library, game.myCivilization, "").some((b) => b.id === pre)) {
@@ -502,7 +501,7 @@ async function momentBlocker(build: SavedBuild, miniByChoice: boolean): Promise<
   const { seconds, read } = gameClock();
   if (seconds > (read ? 120 : 180)) return `partie déjà commencée (${formatClock(seconds)})`;
   // Garde-fou sans commentaire sur ta partie (le lancement auto ne joue qu'en VS) : pas de « répartition ».
-  if (state.hud && hudIsFresh() && distributionMismatch(build.build, state.hud.reading)) return "la partie a déjà commencé";
+  if (state.hud && hudIsFresh() && distributionMismatch(build.build, state.hud.reading)) return "ce BO ne commence pas comme ta partie";
   return null;
 }
 
@@ -833,6 +832,8 @@ function onVision(event: VisionEvent) {
 
 function updateVisionStatus() {
   document.querySelector("#vision-status")?.replaceWith(visionStatus());
+  // Passé en VS pendant que ⚙ est ouvert : le journal des étapes (avec ses comptes) disparaît.
+  if (!features().liveCounts) document.querySelector(".step-log")?.remove();
 }
 
 function loadSettings(): Settings {
@@ -1073,7 +1074,11 @@ function modeBadge(): HTMLElement {
  */
 function modePill(): HTMLElement {
   const { mode: m, why } = modeState();
-  if (why === "humans") {
+  // Désactivée seulement si le joueur vu en face est dans la partie en cours ; une classée d'avant
+  // encore « en cours » sur AoE4World impose VS mais laisse choisir IA pour la suivante.
+  const now = Date.now();
+  const current = (modeMemory.humansLocked && !!modeMemory.lastClock && now - modeMemory.lastClock.at < 60_000) || freshGame(state.game, clock.current(now), now);
+  if (why === "humans" && current) {
     const pill = button("VS 🔒", "Joueur détecté en face : VS jusqu'à la fin de la partie.", () => {});
     pill.className = "mode-badge versus";
     pill.disabled = true;
@@ -1583,7 +1588,8 @@ function matchupPreview(civ: string, opponent: string | null, map: string | null
   const pick = matchupPick(state.matchups, { kind: "rm_1v1", civ, opponentCiv: opponent, map: map ?? "" }, (id) => builds.some((b) => b.id === id));
   // Sans carte tapée, les règles de carte de la civ passent avant : « sur les autres cartes ».
   const mapRules = state.matchups.rules.some((r) => r.civ === civ && r.map);
-  const where = `${opponent ? `Contre ${opponent}` : "Contre toutes les civs"}, ${map ? `sur ${map}` : mapRules ? "sur les autres cartes" : "sur toutes les cartes"}`;
+  const opponentRules = state.matchups.rules.some((r) => r.civ === civ && r.opponent);
+  const where = `${opponent ? `Contre ${opponent}` : opponentRules ? "Contre les autres civs" : "Contre toutes les civs"}, ${map ? `sur ${map}` : mapRules ? "sur les autres cartes" : "sur toutes les cartes"}`;
   if (!pick) return `${where} : BoGo choisit d'après tes parties.`;
   const name = builds.find((b) => b.id === pick.buildId)?.build.name ?? "?";
   const why = pick.rule ? `ta règle ${ruleLabel(pick.rule)}` : "📌 BO de base";
@@ -2036,7 +2042,8 @@ function settingsView(): HTMLElement {
       "hint",
       "Deux modes. VS, par défaut, contre des joueurs : ton BO et ses pages qui tournent toutes seules, rien de " +
         "calculé sur ta partie. IA, à choisir avant une partie contre l'IA (bouton VS / IA en haut) : en plus, alertes " +
-        "de répartition et d'inactifs, comptes réel / cible, stock du passage d'âge. Jamais en classée ni en partie rapide.",
+        "de répartition et d'inactifs, comptes réel / cible, stock du passage d'âge. BoGo vérifie d'abord sur AoE4World " +
+        "que ce n'est ni une classée ni une partie rapide (1 min de jeu) : ne choisis IA qu'avant une partie contre l'IA.",
     ),
     h("label", "scale", "Taille de BoGo ", scaleValue, scale),
     hotkeySettings(),

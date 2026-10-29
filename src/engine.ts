@@ -312,6 +312,9 @@ export class BuildEngine {
     this.record(this.index + 1, `${v} villageois > ${target}${this.coaching ? ", répartition faite" : ""}`);
     this.moveTo(this.index + 1);
     this.enteredAt = now;
+    // Versus : une étape qui n'ajoute pas de villageois (déplacement, bâtiment) n'est quittée
+    // qu'au villageois suivant, sinon elle ne resterait que 5 s à l'écran.
+    if (!this.coaching && this.targets[this.index] <= target) this.floor = v;
   }
 
   /** Dernière étape « villageois » : finie quand sa cible et sa répartition tiennent, après un temps minimum. */

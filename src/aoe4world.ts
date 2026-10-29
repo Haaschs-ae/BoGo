@@ -14,6 +14,8 @@ export interface DetectedGame {
   opponentCivilizations: string[];
   /** Deux équipes d'un joueur chacune. */
   oneVsOne: boolean;
+  /** Joueurs listés par AoE4World, moi compris (les IA n'y sont jamais). */
+  players: number;
 }
 
 /** Accepte un lien aoe4world.com/players/5612909-Nom ou l'identifiant seul. */
@@ -55,6 +57,7 @@ export function parseLastGame(data: unknown, profileId: string): DetectedGame | 
       .flat()
       .map((p) => (typeof p.civilization === "string" ? civilizationName(p.civilization) : "?")),
     oneVsOne: teams.length === 2 && teams.every((team) => team.length === 1),
+    players: teams.flat().length,
   };
 }
 

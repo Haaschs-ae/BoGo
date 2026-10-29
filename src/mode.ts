@@ -47,6 +47,8 @@ export interface ModeInput {
   profileSet: boolean;
   /** Horloge du jeu au départ du dernier sondage AoE4World sans aucune partie contre des humains. */
   checkedAtClock: number | null;
+  /** L'horloge du jeu est lue en ce moment (une partie se joue). */
+  inGame: boolean;
 }
 
 /** Le temps qu'AoE4World voie une partie classée ou rapide (à mesurer, voir le journal). */
@@ -63,6 +65,8 @@ export function decideMode(i: ModeInput): { mode: PlayMode; why: ModeWhy } {
   if (i.game?.ongoing && opposition(i.game) === "humans") return { mode: "versus", why: "humans" };
   if (!i.armed) return { mode: "versus", why: "default" };
   if (!i.profileSet) return { mode: "versus", why: "unverifiable" };
+  // Une vérification ne vaut que pendant la partie dont l'horloge est lue : jamais dans les menus.
+  if (!i.inGame) return { mode: "versus", why: "checking" };
   if (i.game?.ongoing && i.fresh) return { mode: "training", why: "confirmed" };
   if (i.checkedAtClock !== null && i.checkedAtClock >= GRACE_SECONDS) return { mode: "training", why: "checked" };
   return { mode: "versus", why: "checking" };
@@ -97,6 +101,8 @@ export const HUMANS_NOTICE = "Joueur détecté en face : BoGo passe en VS jusqu'
 const FORGOTTEN_MS = 15 * 60_000;
 /** Plus d'horloge depuis une minute : la partie est finie, le verrou « humains » tombe. */
 const GAME_OVER_MS = 60_000;
+/** Plus d'horloge depuis deux minutes : le choix « IA » qui a servi à cette partie tombe. */
+const ARM_OVER_MS = 120_000;
 
 export function freshMemory(): ModeMemory {
   return { armed: false, bound: false, armedAt: 0, lastClock: null, humansLocked: false, checkedAtClock: null, epoch: 0 };
@@ -104,7 +110,9 @@ export function freshMemory(): ModeMemory {
 
 /** « IA » choisi ou retiré : il vaudra pour la partie dont BoGo lira l'horloge ensuite. */
 export function arm(m: ModeMemory, on: boolean, now: number): ModeMemory {
-  return { ...m, armed: on, bound: false, armedAt: now };
+  // Choisi hors partie : rien de vérifié ne passe d'une partie finie à la suivante.
+  const playing = m.lastClock !== null && now - m.lastClock.at < GAME_OVER_MS;
+  return { ...m, armed: on, bound: false, armedAt: now, checkedAtClock: playing ? m.checkedAtClock : null };
 }
 
 /**
@@ -150,6 +158,10 @@ export function aoe4worldSeen(
     next = { ...next, checkedAtClock: Math.max(m.checkedAtClock ?? 0, poll.clock) };
   }
   if (next.armed && now - Math.max(next.armedAt, next.lastClock?.at ?? 0) > FORGOTTEN_MS) next = { ...next, armed: false };
+  // Partie finie (plus d'horloge) : le choix « IA » qui lui a servi tombe, la vérification aussi.
+  if (next.bound && next.lastClock && now - next.lastClock.at > ARM_OVER_MS) {
+    next = { ...next, armed: false, bound: false, checkedAtClock: null };
+  }
   return { memory: next, notice };
 }
 
@@ -161,17 +173,19 @@ export function currentMode(
   profileSet: boolean,
   now: number,
 ): { mode: PlayMode; why: ModeWhy } {
-  return decideMode(inputs(m, game, freshGame(game, clockNow, now), profileSet, now));
+  return decideMode(inputs(m, game, clockNow, profileSet, now));
 }
 
-function inputs(m: ModeMemory, game: DetectedGame | null, fresh: boolean, profileSet: boolean, now: number): ModeInput {
+function inputs(m: ModeMemory, game: DetectedGame | null, clockNow: number | null, profileSet: boolean, now: number): ModeInput {
   return {
     armed: m.armed,
     humansLocked: m.humansLocked && m.lastClock !== null && now - m.lastClock.at < GAME_OVER_MS,
     game,
-    fresh,
+    fresh: freshGame(game, clockNow, now),
     profileSet,
     checkedAtClock: m.checkedAtClock,
+    // Horloge lue il y a moins de 5 s (ClockTracker) : jamais la partie d'avant, jamais les menus.
+    inGame: clockNow !== null,
   };
 }
 

@@ -40,8 +40,10 @@ présence d'humains, jamais celle de l'IA. La première règle qui s'applique ga
 
 Le choix « IA » se fait avec la bascule VS / IA de l'en-tête, hors jeu. Il n'est jamais
 enregistré d'un lancement de BoGo à l'autre. Il vaut pour la partie en cours ou la prochaine, et
-tombe : à la partie suivante (l'horloge du jeu repart en arrière), dès qu'un joueur est vu en
-face dans la partie en cours, après 15 min sans partie, au redémarrage, ou d'un clic.
+tombe : à la fin de la partie où il a servi (deux minutes sans horloge lue) ou au début de la
+suivante (l'horloge repart en arrière), dès qu'un joueur est vu en face dans la partie en cours,
+après 15 min sans partie, au redémarrage, ou d'un clic. Une vérification ne vaut que pendant la
+partie dont l'horloge est lue : jamais dans les menus, jamais pour la partie suivante.
 
 En jeu : un badge non cliquable « VS », « IA… » ou « IA ». Bandeaux de quelques secondes :
 « Joueur détecté en face : BoGo passe en VS jusqu'à la fin de la partie. » et « Nouvelle
@@ -85,8 +87,7 @@ ni dérive, ni « payable »), et la vue ne lit la partie qu'au travers d'une se
 - **Règles** « contre telle civ, sur telle carte → ce BO », dans l'éditeur « 🎯 Matchups » de la
   page de la civ. Choisir le BO enregistre la règle ; une phrase dit ce que BoGo choisirait.
 - **Ordre de lecture** au début de la partie :
-  1. BO lancé depuis la bibliothèque avant la partie (dans les 15 min qui précèdent, et toujours
-     affiché à la détection, même réduit) ;
+  1. BO lancé depuis la bibliothèque avant la partie, s'il est toujours le BO en cours ;
   2. règle civ adverse + carte ;
   3. règle de carte ;
   4. règle de civ adverse ;
@@ -95,7 +96,8 @@ ni dérive, ni « payable »), et la vue ne lit la partie qu'au travers d'une se
 - **La carte passe avant la civ adverse** : une carte d'eau ou hybride rend un BO terrestre
   injouable, alors qu'on s'adapte à l'adversaire après l'éclaireur. Si une règle de carte et une
   règle de civ adverse se contredisent, la carte gagne, l'autre BO est proposé sur l'écran de choix
-  avec sa touche de catégorie, et rien ne part tout seul.
+  (avec sa touche de catégorie s'il est d'une autre catégorie, sinon avec ▶), et rien ne part
+  tout seul.
 - **« Contre »** ne joue qu'en 1v1 classé ou rapide : en personnalisée, AoE4World omet les IA
   (« moi + une IA contre un joueur + une IA » y ressemble à un 1v1). En équipe, chacun pour soi
   ou personnalisée à plusieurs : le BO de base seulement.
