@@ -132,6 +132,23 @@ fn stop_vision(vision: State<Vision>) {
     }
 }
 
+/// Réapplique régulièrement le maintien au premier plan (appelé par l'interface) :
+/// macOS peut repasser GeForce Now devant en changeant de bureau ou de plein écran.
+#[tauri::command]
+fn keep_overlay_on_top(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window("overlay") {
+                let _ = macos::float_over_fullscreen(&window);
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
 #[tauri::command]
 fn quit(app: AppHandle, vision: State<Vision>) {
     stop_vision(vision);
@@ -147,6 +164,7 @@ pub fn run() {
             fetch_aoe4guides_build,
             fetch_last_game,
             open_aoe4guides,
+            keep_overlay_on_top,
             start_vision,
             stop_vision,
             quit
@@ -171,21 +189,34 @@ pub fn run() {
 mod macos {
     use objc2::{msg_send, runtime::AnyObject};
 
-    // Valeurs de NSWindowCollectionBehavior et NSWindowLevel (AppKit).
+    // Valeurs de NSWindowCollectionBehavior (AppKit).
     const CAN_JOIN_ALL_SPACES: usize = 1 << 0;
     const STATIONARY: usize = 1 << 4;
+    const IGNORES_CYCLE: usize = 1 << 6;
     const FULL_SCREEN_AUXILIARY: usize = 1 << 8;
-    const STATUS_WINDOW_LEVEL: isize = 25;
 
-    /// Garde l'overlay visible par-dessus GeForce Now en plein écran.
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        /// Niveau de la fenêtre qu'une appli en plein écran exclusif place devant tout le reste.
+        fn CGShieldingWindowLevel() -> i32;
+    }
+
+    /// Garde l'overlay visible par-dessus GeForce Now en plein écran : présent sur tous les
+    /// bureaux, y compris celui d'une appli en plein écran, au-dessus du niveau de capture d'écran.
+    /// S'il est affiché, il est ramené devant sans prendre le clavier.
     pub fn float_over_fullscreen(window: &tauri::WebviewWindow) -> tauri::Result<()> {
         let ns_window = window.ns_window()? as *mut AnyObject;
         unsafe {
             let _: () = msg_send![
                 ns_window,
-                setCollectionBehavior: CAN_JOIN_ALL_SPACES | STATIONARY | FULL_SCREEN_AUXILIARY
+                setCollectionBehavior: CAN_JOIN_ALL_SPACES | STATIONARY | IGNORES_CYCLE | FULL_SCREEN_AUXILIARY
             ];
-            let _: () = msg_send![ns_window, setLevel: STATUS_WINDOW_LEVEL];
+            let level = CGShieldingWindowLevel() as isize + 1;
+            let _: () = msg_send![ns_window, setLevel: level];
+            let visible: bool = msg_send![ns_window, isVisible];
+            if visible {
+                let _: () = msg_send![ns_window, orderFrontRegardless];
+            }
         }
         Ok(())
     }

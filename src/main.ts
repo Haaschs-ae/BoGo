@@ -140,6 +140,8 @@ setInterval(pollGame, POLL_SECONDS * 1000);
 listen<VisionEvent>("vision", (event) => onVision(event.payload));
 listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
 if (state.settings.readScreen) startVision();
+// macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
+setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
 
 document.addEventListener("keydown", (e) => {
   if (state.view !== "play" || e.target instanceof HTMLTextAreaElement) return;
