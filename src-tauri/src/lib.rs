@@ -29,8 +29,23 @@ async fn fetch_last_game(profile_id: String, api_key: Option<String>) -> Result<
     get_json("AoE4World", &url).await
 }
 
+/// Client HTTP partagé : connexions réutilisées, délai maximal (une réponse qui traîne ne
+/// bloque pas le sondage suivant) et un User-Agent qui nomme BoGo auprès des deux sites.
+fn http() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .user_agent(concat!("BoGo/", env!("CARGO_PKG_VERSION"), " (+https://github.com/Haaschs-ae/BoGo)"))
+            .build()
+            .expect("client HTTP")
+    })
+}
+
 async fn get_json(site: &str, url: &str) -> Result<serde_json::Value, String> {
-    let response = reqwest::get(url)
+    let response = http()
+        .get(url)
+        .send()
         .await
         .map_err(|e| format!("Connexion à {site} impossible : {e}"))?;
     if !response.status().is_success() {

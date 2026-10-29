@@ -261,11 +261,16 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+let polling = false;
+
+/** Un seul appel AoE4World à la fois : une réponse lente ne doit pas doubler la suivante. */
 async function pollGame() {
   const { profileId, apiKey } = state.settings;
-  if (!profileId) return;
+  if (!profileId || polling) return;
+  polling = true;
   try {
     const game = await fetchLastGame(profileId, apiKey);
+    if (profileId !== state.settings.profileId) return;
     state.gameError = null;
     state.game = game;
     if (game?.ongoing && game.id !== state.handledGameId) {
@@ -280,6 +285,8 @@ async function pollGame() {
     }
   } catch (err) {
     state.gameError = errorText(err);
+  } finally {
+    polling = false;
   }
   // Sans nouvelle partie, on ne rafraîchit que l'en-tête pour ne pas effacer une saisie en cours.
   refreshHeader();
@@ -413,9 +420,11 @@ function loadSettings(): Settings {
 
 function saveSettings(settings: Settings) {
   const wasReading = state.settings.readScreen;
+  const previous = state.settings;
   state.settings = settings;
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  state.handledGameId = null;
+  store(SETTINGS_KEY, settings);
+  // Autre profil : sa partie en cours n'a pas encore été proposée.
+  if (settings.profileId !== previous.profileId) state.handledGameId = null;
   pollGame();
   if (settings.readScreen && !wasReading) startVision();
   if (!settings.readScreen && wasReading) {
@@ -425,13 +434,24 @@ function saveSettings(settings: Settings) {
 }
 
 function saveSession() {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ currentId: state.currentId, step: state.step, civ: state.civ }));
+  store(SESSION_KEY, { currentId: state.currentId, step: state.step, civ: state.civ, handledGameId: state.handledGameId });
+}
+
+/** Écrit dans localStorage sans jamais faire échouer l'action en cours (quota, mode privé). */
+function store(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Rien à faire : la session continue en mémoire.
+  }
 }
 
 function restoreSession() {
   try {
     const s = JSON.parse(localStorage.getItem(SESSION_KEY) ?? "{}");
     if (typeof s.civ === "string") state.civ = s.civ;
+    // La partie déjà proposée n'est pas re-proposée après un redémarrage en cours de partie.
+    if (Number.isInteger(s.handledGameId)) state.handledGameId = s.handledGameId;
     if (typeof s.currentId === "string" && state.library.some((b) => b.id === s.currentId)) {
       state.currentId = s.currentId;
       state.step = Number.isInteger(s.step) ? s.step : 0;

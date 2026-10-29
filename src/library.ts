@@ -35,7 +35,11 @@ export function loadLibrary(store: KeyValueStore): SavedBuild[] {
 }
 
 export function saveLibrary(store: KeyValueStore, library: SavedBuild[]): void {
-  store.setItem(KEY, JSON.stringify(library));
+  try {
+    store.setItem(KEY, JSON.stringify(library));
+  } catch {
+    // Quota atteint ou stockage indisponible : la bibliothèque reste en mémoire.
+  }
 }
 
 export function addBuild(
