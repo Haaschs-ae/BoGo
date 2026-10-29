@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="choix.css" />
+    <style>
+      /* Carte C, version 2 : compacte, raccourcis fixes par catégorie, raisons factuelles. */
+      .win { width: 380px; }
+      .reco-card { margin: 10px 12px 0; padding: 10px 12px 12px; }
+      .reco-top { margin-top: 6px; gap: 10px; }
+      .big-tile { width: 60px; height: 60px; border-radius: 10px; }
+      .big-tile img { height: 48px; }
+      .big { font-size: 19px; }
+      .plan { margin-top: 6px; font-size: 13px; }
+      .facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .fact { padding: 3px 8px; border-radius: 6px; background: var(--panel-2); font-size: 12.5px; color: var(--text); }
+      .fact.res { background: rgba(76, 209, 122, 0.14); color: #a8f0c0; }
+      .fact.warn { background: rgba(255, 122, 112, 0.16); color: #ffb3ac; }
+      .go { margin-top: 10px; padding: 10px; font-size: 16px; }
+      .auto { margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+      .auto .off { color: #ffb3ac; }
+      .progress { height: 3px; margin-top: 6px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
+      .progress i { display: block; height: 100%; width: 62%; background: var(--ok); }
+      .catrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px 12px 4px; }
+      .catbtn { position: relative; padding: 8px 6px 7px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); text-align: center; }
+      .catbtn .key { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; font-size: 11px; }
+      .catbtn img { height: 28px; margin-top: 2px; }
+      .catbtn .l { margin-top: 3px; font-size: 12px; font-weight: 800; line-height: 1.1; }
+      .catbtn .b { margin-top: 2px; font-size: 10.5px; color: var(--muted); line-height: 1.15; }
+      .catbtn.on { border-color: var(--accent); background: rgba(242, 182, 50, 0.12); }
+      .catbtn.on .key { background: var(--accent); color: #1b1405; }
+      .catbtn.off { opacity: 0.42; }
+      .foot { padding: 8px 12px 10px; font-size: 12px; }
+      .slim { margin: 10px 12px 0; padding: 9px 12px; border-radius: 10px; background: rgba(76, 209, 122, 0.12); border: 1px solid rgba(76, 209, 122, 0.5); font-size: 13.5px; line-height: 1.35; }
+      .slim b { color: var(--ok); }
+      .hint { margin: 6px 12px 0; font-size: 12px; color: var(--muted); }
+      .mode { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    </style>
+  </head>
+  <body>
+    <script>
+      const I = (name, cls = "") => {
+        const ext = /^(english|french|unknown|sengoku_daimyo)$/.test(name) ? "png" : "webp";
+        return `<img class="ic ${cls}" src="icons/${name}.${ext}" alt="">`;
+      };
+      const CATS = [
+        ["Boom", "farm"],
+        ["Fast Castle", "age_3"],
+        ["Timing", "knight-2"],
+        ["Rush", "attack-move"],
+      ];
+
+      // En-tête : la civ jouée ; l'adversaire seulement en 1v1 ; rien sur les adversaires à plusieurs.
+      const head = ({ random = true, mode = "1v1", clock = "0:04" }) => `
+        <div class="civhead"><div class="row">
+          <img class="flag" src="icons/english.png">
+          <div><div class="civ">Anglais${random ? '<span class="rand">🎲 aléatoire</span>' : ""}</div>
+            ${mode === "1v1"
+              ? `<div class="vs">contre <img class="flag sm" src="icons/french.png"> Français · Dry Arabia</div>`
+              : `<div class="mode">Partie en équipe 2v2 · Dry Arabia</div>`}</div>
+          <span class="clock">⏱ ${clock}</span></div></div>`;
+
+      // Rangée fixe : une touche par catégorie, la même pour toutes les civs et toutes les parties.
+      const catRow = (on, bos) => `<div class="catrow">${CATS.map(([label, icon], i) => {
+        const bo = bos[i];
+        return `<div class="catbtn ${label === on ? "on" : ""} ${bo ? "" : "off"}"><span class="key">${i + 1}</span>
+          ${I(icon)}<div class="l">${label}</div><div class="b">${bo ?? "aucun BO"}</div></div>`;
+      }).join("")}</div>`;
+
+      const BOS = ["2 TC Defensive", "Abbey of Kings FC", "Council Hall Longbow", null];
+      const plan = `${I("age_2", "sm")} Âge II <b>4:20</b> · ${I("town-center", "sm")} 2<sup>e</sup> TC <b>6:10</b>`;
+
+      const card = ({ title = "2 TC Defensive", tags, facts, countdown, warn = "" }) => `
+        <div class="reco-card">
+          <div class="kicker">TON BO POUR CETTE PARTIE</div>
+          <div class="reco-top"><span class="big-tile">${I("council-hall")}</span>
+            <div><div class="big">${title}</div><div class="tags" style="margin-top:4px">${tags}</div></div></div>
+          <div class="plan">${plan}</div>
+          <div class="facts">${facts}${warn}</div>
+          <div class="go">▶ Lancer <kbd>⌘⌥↵</kbd></div>
+          ${countdown}
+        </div>`;
+
+      const running = `<div class="auto"><span>Lancé tout seul dans <b>5 s</b></span><span><kbd>⌘⌥⌫</kbd> annuler</span></div>
+        <div class="progress"><i></i></div>`;
+      const off = (why) => `<div class="auto"><span class="off">Lancement auto désactivé : ${why}</span></div>`;
+
+      const tagsStd = `<span class="tag">${I("farm", "sm")} Éco · Boom</span><span class="tag lib">★</span><span>Saison 14 · 412 favoris</span>`;
+
+      function v1v1() {
+        return `<div class="caption" style="left:70px">C v2 · 1v1 classé <small>— compte à rebours</small></div>
+          <div class="win" style="left:70px">${head({})}
+            ${card({
+              tags: tagsStd,
+              facts: `<span class="fact">Gardé à 3 de tes 4 dernières parties en Anglais</span><span class="fact res">Avec ce BO : 3 V – 1 D</span>`,
+              countdown: running,
+            })}
+            ${catRow("Boom", BOS)}
+            <div class="foot"><span><kbd>⌘⌥1</kbd>–<kbd>4</kbd> style, même après le lancement</span><span class="link">Voir les 5 BO</span></div></div>`;
+      }
+
+      function vTeam() {
+        return `<div class="caption" style="left:480px">C v2 · partie en équipe <small>— pas d'adversaire, pas de lancement auto</small></div>
+          <div class="win" style="left:480px">${head({ mode: "team", random: false })}
+            ${card({
+              tags: tagsStd,
+              facts: `<span class="fact">Ton BO le plus gardé en Anglais (5 parties)</span>`,
+              countdown: off("partie en équipe"),
+            })}
+            ${catRow("Boom", BOS)}
+            <div class="foot"><span><kbd>⌘⌥1</kbd>–<kbd>4</kbd> changer de style</span><span class="link">Voir les 5 BO</span></div></div>`;
+      }
+
+      function vPre() {
+        return `<div class="caption" style="left:890px">C v2 · BO choisi avant la partie</div>
+          <div class="win" style="left:890px">${head({ random: false, clock: "0:09" })}
+            <div class="slim"><b>BO choisi avant la partie</b> · Council Hall Longbow Push<br><span class="muted">Étape 1/11 en cours, rien ne change.</span></div>
+            ${catRow("Timing", BOS)}
+            <div class="hint">Pour changer d'avis : une touche, jusqu'au passage d'âge.</div>
+            <div class="foot"><span>Aucun compte à rebours</span><span class="link">Voir les 5 BO</span></div></div>`;
+      }
+
+      function vFallback() {
+        return `<div class="caption" style="left:1300px">C v2 · saison précédente + patch <small>— bouton seul</small></div>
+          <div class="win" style="left:1300px">${head({ random: true, clock: "0:31" })}
+            ${card({
+              title: "Abbey of Kings Fast Castle",
+              tags: `<span class="tag">${I("age_3", "sm")} Fast Castle</span><span>Saison 13 · 264 favoris · 9 100 vues</span>`,
+              facts: `<span class="fact">Civ aléatoire : pas d'historique en Anglais</span><span class="fact">Rien d'assez suivi en saison 14</span>`,
+              warn: `<span class="fact warn">⚠ Écrit avant le patch du 15/10</span>`,
+              countdown: off("BO de la saison 13"),
+            })}
+            ${catRow("Fast Castle", ["2 TC Defensive", "Abbey of Kings FC", "Council Hall Longbow", null])}
+            <div class="foot"><span><kbd>⌘⌥1</kbd>–<kbd>4</kbd> changer de style</span><span class="link">🌐 aoe4guides</span></div></div>`;
+      }
+
+      document.body.innerHTML = v1v1() + vTeam() + vPre() + vFallback();
+    </script>
+  </body>
+</html>

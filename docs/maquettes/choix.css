@@ -1,0 +1,630 @@
+/* Maquettes du choix de BO : même palette que l'appli (contraste vérifié). */
+:root {
+  --bg: rgba(14, 17, 23, 0.94);
+  --panel: rgba(255, 255, 255, 0.06);
+  --panel-2: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.12);
+  --text: #f3f4f6;
+  --muted: #b4bac5;
+  --accent: #f2b632;
+  --ok: #4cd17a;
+  --danger: #ff7a70;
+  --food: #d9604c;
+  --wood: #a8743f;
+  --gold: #e8b93a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  position: relative;
+  background: url(bg.webp) 0 0 / 1920px 1080px;
+}
+
+.win {
+  position: absolute;
+  top: 72px;
+  width: 380px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.caption {
+  position: absolute;
+  top: 24px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(14, 17, 23, 0.9);
+  border: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.caption small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+img.ic {
+  height: 22px;
+  vertical-align: middle;
+}
+
+img.ic.sm {
+  height: 18px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- En-tête : civ jouée, adversaire, carte, horloge ---------- */
+
+.civhead {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.civhead .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.flag {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.flag.sm {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  vertical-align: -3px;
+}
+
+.civ {
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.rand {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: 3px;
+}
+
+.vs {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.clock {
+  margin-left: auto;
+  align-self: flex-start;
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.headbtns {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  align-self: flex-start;
+}
+
+.headbtns span {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- Catégories (puces), comme aoe4guides ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.chip b {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1b1405;
+}
+
+.chip.on b {
+  color: #4a3a0c;
+}
+
+.chip.off {
+  opacity: 0.45;
+}
+
+/* ---------- Liste des BO, groupée par saison ---------- */
+
+.list {
+  padding: 4px 10px 10px;
+}
+
+.season {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 4px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.season::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.bo {
+  display: grid;
+  grid-template-columns: 22px 44px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.bo + .bo {
+  margin-top: 4px;
+}
+
+.bo.top {
+  background: rgba(242, 182, 50, 0.09);
+  border-color: rgba(242, 182, 50, 0.55);
+}
+
+.key {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.bo.top .key {
+  background: var(--accent);
+  color: #1b1405;
+}
+
+.lm {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+}
+
+.lm img {
+  height: 36px;
+}
+
+.name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.tags {
+  margin-top: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tag {
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tag.lib {
+  background: rgba(242, 182, 50, 0.16);
+  color: var(--accent);
+}
+
+.plan {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.plan b {
+  color: var(--text);
+}
+
+.play {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: 16px;
+}
+
+.bo.top .play {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #06210f;
+}
+
+.foot {
+  padding: 9px 14px 11px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.foot .link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+kbd {
+  font: inherit;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.note {
+  margin: 8px 4px 2px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(242, 182, 50, 0.1);
+  border: 1px solid rgba(242, 182, 50, 0.35);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* ---------- Piste B : grandes tuiles de catégorie ---------- */
+
+.kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.pick {
+  padding: 12px 14px 4px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px 14px 14px;
+}
+
+.cat {
+  position: relative;
+  padding: 10px 10px 9px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.cat.reco {
+  border-color: var(--accent);
+  background: rgba(242, 182, 50, 0.09);
+}
+
+.cat .k {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.cat .art {
+  height: 48px;
+}
+
+.cat .t {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cat .n {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cat .best {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.cat.off {
+  opacity: 0.5;
+}
+
+.cat .star {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.back .arrow {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-weight: 400;
+}
+
+/* ---------- Piste C : le BO conseillé en un clic ---------- */
+
+.reco-card {
+  margin: 12px 14px 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(242, 182, 50, 0.09);
+  border: 1px solid rgba(242, 182, 50, 0.55);
+}
+
+.reco-top {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.big-tile {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+}
+
+.big-tile img {
+  height: 56px;
+}
+
+.big {
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.reco-card .plan {
+  margin-top: 10px;
+  font-size: 13.5px;
+}
+
+.go {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 11px;
+  border-radius: 10px;
+  background: var(--ok);
+  color: #06210f;
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.go kbd {
+  background: rgba(0, 0, 0, 0.18);
+  color: #06210f;
+}
+
+.auto {
+  margin-top: 7px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.why {
+  margin: 8px 14px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.alts {
+  display: grid;
+  gap: 6px;
+  padding: 6px 14px 12px;
+}
+
+.alt {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.alt img {
+  height: 28px;
+}
+
+.alt .t {
+  font-weight: 700;
+}
+
+.alt .s {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.alt .chev {
+  color: var(--muted);
+}
+
+.section-title {
+  margin: 12px 14px 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* ---------- États : détection de la civ aléatoire, rien trouvé ---------- */
+
+.detect {
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.src {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.src small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--accent);
+}
+
+.check {
+  flex: none;
+  color: var(--ok);
+  font-weight: 800;
+}
+
+.meanwhile {
+  margin: 0 14px 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  line-height: 1.5;
+}
+
+.empty {
+  padding: 14px;
+  line-height: 1.45;
+}
+
+.empty .btn {
+  margin-top: 10px;
+  display: block;
+  padding: 9px;
+  text-align: center;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-weight: 700;
+}
+
+.empty .btn.main {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1b1405;
+}
