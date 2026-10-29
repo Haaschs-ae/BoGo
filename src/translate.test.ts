@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrder } from "./buildOrder";
-import { looksEnglish, translateTerm, translateText } from "./translate";
+import { hasEnglish, looksEnglish, translateLine, translateTerm, translateText } from "./translate";
 
 describe("translateText (consignes réelles du BO « English 2 TC defensive »)", () => {
   it.each([
@@ -72,5 +72,24 @@ describe("translateTerm (noms d'icônes)", () => {
     expect(translateTerm("house")).toBe("maison");
     expect(translateTerm("stone wall tower")).toBe("stone wall tower");
     expect(translateTerm("kharash")).toBe("kharash");
+  });
+});
+
+describe("consignes réelles d'un BO Vikings (capture du joueur)", () => {
+  it("traduit les tournures courantes sans laisser d'anglais", () => {
+    const line = translateLine(["If vs another dark age civ, keep producing spearmen to protect deer"]);
+    expect(line).toEqual(["Si contre une autre civ en âge sombre, continue à produire lanciers pour protéger cerfs"]);
+    expect(translateLine(["Either way, use spears to finish ", " if possible"])).toEqual([
+      "Dans tous les cas, utilise lanciers pour finir ",
+      " si possible",
+    ]);
+    expect(translateText("Force drop (will have 400) on TC")).toBe("Fais déposer (aura 400) sur TC");
+  });
+
+  it("jamais de franglais : une consigne qui garde de l'anglais reste entière en anglais", () => {
+    const english = ["Those 3 should be sitting on the berries until the mill is up"];
+    expect(hasEnglish(translateText(english[0]))).toBe(true);
+    expect(translateLine(english)).toEqual(english);
+    expect(hasEnglish("Continue à produire lanciers")).toBe(false);
   });
 });

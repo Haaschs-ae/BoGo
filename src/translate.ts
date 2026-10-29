@@ -7,7 +7,27 @@ import type { BuildOrder } from "./buildOrder";
 
 /** Expressions, de la plus longue à la plus courte (avant les mots seuls). */
 const PHRASES: [string, string][] = [
+  ["another dark age civ", "une autre civ en âge sombre"],
   ["scout in a standard pattern", "explore en motif classique"],
+  ["dark age civ", "civ en âge sombre"],
+  ["either way", "dans tous les cas"],
+  ["in any case", "dans tous les cas"],
+  ["keep producing", "continue à produire"],
+  ["keep making", "continue à faire"],
+  ["keep training", "continue à produire"],
+  ["keep building", "continue à construire"],
+  ["start producing", "commence à produire"],
+  ["stop producing", "arrête de produire"],
+  ["if possible", "si possible"],
+  ["if needed", "si besoin"],
+  ["if necessary", "si besoin"],
+  ["will have", "aura"],
+  ["force drop", "fais déposer"],
+  ["force-drop", "fais déposer"],
+  ["at least", "au moins"],
+  ["instead of", "au lieu de"],
+  ["right away", "tout de suite"],
+  ["as well", "aussi"],
   ["in a standard pattern", "en motif classique"],
   ["as soon as possible", "dès que possible"],
   ["as soon as", "dès que"],
@@ -123,6 +143,8 @@ const WORDS: Record<string, string> = {
   scouts: "éclaireurs",
   spearman: "lancier",
   spearmen: "lanciers",
+  spear: "lancier",
+  spears: "lanciers",
   archer: "archer",
   archers: "archers",
   horseman: "cavalier",
@@ -146,6 +168,16 @@ const WORDS: Record<string, string> = {
   imperial: "impérial",
   age: "âge",
   // Verbes
+  protect: "protège",
+  defend: "défends",
+  finish: "finis",
+  kill: "tue",
+  attack: "attaque",
+  hunt: "chasse",
+  wait: "attends",
+  producing: "en produisant",
+  making: "en faisant",
+  training: "en produisant",
   build: "construis",
   built: "construit",
   building: "construction",
@@ -238,6 +270,19 @@ const WORDS: Record<string, string> = {
   aggressive: "agressif",
   idle: "inactif",
   enemy: "ennemi",
+  vs: "contre",
+  versus: "contre",
+  against: "contre",
+  other: "autre",
+  deposit: "dépôt",
+  so: "donc",
+  but: "mais",
+  because: "car",
+  early: "tôt",
+  late: "tard",
+  fast: "vite",
+  quickly: "vite",
+  behind: "derrière",
   opponent: "adversaire",
   he: "il",
   you: "tu",
@@ -251,6 +296,18 @@ const WORDS: Record<string, string> = {
   an: "",
 };
 
+/** « to » suivi d'un verbe : « pour » + infinitif (« spears to protect deer » → « … pour protéger … »). */
+const INFINITIVES: Record<string, string> = {
+  build: "construire", send: "envoyer", move: "déplacer", protect: "protéger", defend: "défendre",
+  finish: "finir", complete: "finir", get: "prendre", take: "prendre", make: "faire", produce: "produire",
+  train: "produire", research: "rechercher", gather: "récolter", chop: "couper", use: "utiliser",
+  start: "commencer", stop: "arrêter", save: "économiser", sell: "vendre", buy: "acheter", keep: "garder",
+  harass: "harceler", scout: "explorer", kill: "tuer", attack: "attaquer", hunt: "chasser", reach: "atteindre",
+  help: "aider", fight: "combattre", wall: "murer", block: "bloquer", push: "pousser", age: "passer l'âge",
+};
+
+const INFINITIVE_PATTERN = new RegExp(`(?<![\\p{L}'-])to (${Object.keys(INFINITIVES).join("|")})(?![\\p{L}'-])`, "giu");
+
 const PHRASE_PATTERNS = PHRASES.map(
   ([en, fr]) => [new RegExp(`(?<![\\p{L}'-])${escape(en)}(?![\\p{L}'-])`, "giu"), fr] as const,
 );
@@ -259,6 +316,7 @@ const PHRASE_PATTERNS = PHRASES.map(
 export function translateText(text: string): string {
   let out = text;
   for (const [pattern, fr] of PHRASE_PATTERNS) out = out.replace(pattern, (match) => keepCase(match, fr));
+  out = out.replace(INFINITIVE_PATTERN, (match, verb: string) => keepCase(match, `pour ${INFINITIVES[verb.toLowerCase()]}`));
   // Mots seuls : lettres latines, apostrophe et trait d'union compris (don't, men-at-arms).
   out = out.replace(/[\p{L}][\p{L}'-]*/gu, (word) => {
     const fr = WORDS[word.toLowerCase()];
@@ -266,6 +324,31 @@ export function translateText(text: string): string {
   });
   // Articles supprimés : on ne laisse pas d'espaces doubles.
   return out.replace(/ {2,}/g, " ").replace(/^ (?=\S)/, (m) => (text.startsWith(" ") ? m : ""));
+}
+
+/** Mots anglais courants qui ne sont pas du français : s'il en reste, la traduction a échoué. */
+const ENGLISH_LEFT = new Set(
+  ("the of to for with from by as it its this that these those there their they we will would should could " +
+    "can need needs want have has had do does be been being was were way either some any much many very just " +
+    "still again over under out down up off sure which what who how why where than too left right while")
+    .split(" "),
+);
+
+/** Il reste de l'anglais : un mot courant anglais, ou un mot en « -ing ». */
+export function hasEnglish(text: string): boolean {
+  return (text.match(/[\p{L}][\p{L}'-]*/gu) ?? []).some((w) => {
+    const lower = w.toLowerCase();
+    return ENGLISH_LEFT.has(lower) || (lower.length >= 5 && lower.endsWith("ing"));
+  });
+}
+
+/**
+ * Traduit les morceaux de texte d'une consigne (entre ses icônes). Jamais de franglais : s'il
+ * reste de l'anglais quelque part, la consigne garde son texte anglais, entier et lisible.
+ */
+export function translateLine(texts: string[]): string[] {
+  const french = texts.map(translateText);
+  return french.some(hasEnglish) ? texts : french;
 }
 
 /** Traduit un nom entier (« lumber camp », « horseman ») ; un nom inconnu reste en anglais. */

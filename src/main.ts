@@ -42,7 +42,7 @@ import {
   setHotkeys,
   type HotkeyAction,
 } from "./platform";
-import { looksEnglish, translateText } from "./translate";
+import { looksEnglish, translateLine } from "./translate";
 import { adviseBuild, categoryPicks, COUNTDOWN_SECONDS, distributionMismatch, type Advice } from "./advice";
 import { newEntry, parseJournal, serializeJournal, type GameEntry, type LaunchHow } from "./journal";
 import {
@@ -1403,10 +1403,18 @@ function notes(lines: string[], className: string, translate: boolean, named = n
  * si le texte juste à côté le dit déjà, ou si elle est déjà nommée en grand (`named`).
  */
 function noteParts(line: string, translate: boolean, named = new Set<string>()): (Node | string)[] {
-  const parts = tokenizeNote(line).map((part) => {
+  const tokens = tokenizeNote(line);
+  const texts = tokens.flatMap((part) => (part.kind === "text" ? [part.text.replace(/->/g, "→")] : []));
+  // Toute la consigne d'un coup : traduite entière, ou laissée en anglais (jamais de franglais).
+  const shown = translate ? translateLine(texts) : texts;
+  let t = 0;
+  const parts = tokens.map((part, i) => {
     if (part.kind === "image") return part;
-    const text = part.text.replace(/->/g, "→");
-    return translate ? translateText(text) : text;
+    let text = shown[t++];
+    // Une icône collée au mot voisin dans le BO (« @bondi@from ») : on remet l'espace.
+    if (tokens[i - 1]?.kind === "image" && /^[\p{L}\d]/u.test(text)) text = ` ${text}`;
+    if (tokens[i + 1]?.kind === "image" && /[\p{L}\d]$/u.test(text)) text = `${text} `;
+    return text;
   });
   return parts.map((part, i) => {
     if (typeof part === "string") return part;
