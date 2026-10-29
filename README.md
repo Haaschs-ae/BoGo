@@ -22,8 +22,8 @@ L'appli est faite avec [Tauri](https://tauri.app) et pourra aussi tourner sous W
    xattr -cr /Applications/BoGo.app
    ```
 
-BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. En partie, ✕ la masque (⌘⌥B pour la
-réafficher) ; depuis la bibliothèque, ✕ puis « Quitter ? » ferme BoGo.
+BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. En partie, ✕ la masque (⌘⌥B, ou ton
+raccourci, pour la réafficher) ; depuis la bibliothèque, ✕ puis « Quitter ? » ferme BoGo.
 
 ### Windows (expérimental)
 
@@ -33,7 +33,8 @@ SmartScreen affiche « Windows a protégé votre ordinateur » : « Informations
 puis « Exécuter quand même ». Pour l'instant, sous Windows :
 
 - **pas de lecture de l'écran** : le BO avance avec les raccourcis (suivi manuel) ;
-- raccourcis **Ctrl+Maj** au lieu de ⌘⌥ (Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…) ;
+- raccourcis **Ctrl+Maj** au lieu de ⌘⌥ (Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…),
+  modifiables dans ⚙ comme sur Mac ;
 - jeu installé (Steam, Xbox) : mets-le en **fenêtré sans bordure**, l'overlay ne peut pas
   s'afficher par-dessus le plein écran exclusif.
 
@@ -125,6 +126,13 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
 | ⌘ ⌥ L | Verrouiller : les clics traversent l'overlay et vont au jeu |
 | ⌘ ⌥ M | Réduire / agrandir (pastille) |
 | ⌘ ⌥ B | Afficher / masquer l'overlay |
+
+Ce sont les raccourcis par défaut (Ctrl+Maj sous Windows). **Tous se changent dans ⚙ ›
+Raccourcis** : « Changer », puis taper la combinaison voulue (avec ⌘, ⌃ ou ⌥, ou une touche F
+seule ; Échap pour annuler) ; « Défaut » pour revenir. BoGo refuse ce qui gênerait la frappe
+(une lettre seule), ce qui appartient au système (⌘Q, ⌘Tab…) et les doublons ; si une autre appli
+a déjà pris la combinaison, il garde l'ancienne. Sans raccourci « Verrouiller » en place, BoGo ne
+se verrouille pas, et sans « Afficher / masquer », ✕ ne le masque pas : il resterait hors de portée.
 
 ## Fonctionnement prévu
 

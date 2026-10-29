@@ -907,3 +907,38 @@ label.scale input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
 }
+
+/* Raccourcis modifiables (réglages) */
+.hotkeys {
+  display: grid;
+  gap: 6px;
+}
+
+.hotkey-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.hotkey-row .key {
+  min-width: 64px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hotkey-row .key.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hotkey-row .status {
+  grid-column: 1 / -1;
+  margin: 0;
+}

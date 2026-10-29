@@ -38,6 +38,12 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   Rust propre à chaque système. Raccourcis Windows : Ctrl+Maj (pas Ctrl+Alt = AltGr en AZERTY),
   à valider avec des testeurs Windows. L'édition Windows est expérimentale (suivi manuel) tant
   que la lecture d'écran Windows n'existe pas.
+- **2026-10-29 · Raccourcis modifiables (⚙ › Raccourcis).** Combinaison avec ⌘/⌃/⌥ (Ctrl/Alt
+  sous Windows) ou touche F seule. Refusés : touche seule ou avec ⇧ (gênerait la frappe),
+  Ctrl+Alt+lettre sous Windows (AltGr), raccourcis du système, doublons ; un raccourci que le
+  système refuse (déjà pris par une autre appli) n'est pas gardé. Garde-fou : sans raccourci
+  « Verrouiller » (ou « Afficher / masquer ») en place, BoGo ne se verrouille pas (ne se masque
+  pas), faute de moyen d'y revenir.
 - **2026-10-29 · Alertes : on garde le grand bandeau actuel** (texte + icônes, pleine largeur)
   plutôt que l'emplacement compact en pictogrammes de la maquette v3.
 - **2026-10-29 · En partie, BoGo se verrouille (clics vers le jeu) au lancement d'un BO ; ✕ masque

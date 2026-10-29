@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { register } from "@tauri-apps/plugin-global-shortcut";
+import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
 import { extractProfileId, fetchLastGame, kindLabel, soloOpponent, type DetectedGame } from "./aoe4world";
 import {
@@ -28,7 +28,20 @@ import {
 } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { LandmarkWatch } from "./top";
-import { HOTKEY_HINT, HOTKEYS, KEYS, SCREEN_READING } from "./platform";
+import {
+  acceleratorFromEvent,
+  checkHotkey,
+  DEFAULT_HOTKEYS,
+  HOTKEY_ACTIONS,
+  hotkeyHint,
+  hotkeyLabel,
+  HOTKEYS,
+  KEYS,
+  sameHotkey,
+  SCREEN_READING,
+  setHotkeys,
+  type HotkeyAction,
+} from "./platform";
 import { looksEnglish, translateText } from "./translate";
 import {
   addBuild,
@@ -46,6 +59,12 @@ const ICON_BASE = "https://rts-overlay.github.io/assets/aoe4/";
 
 const SESSION_KEY = "bogo.session.v1";
 const SETTINGS_KEY = "bogo.settings.v1";
+/**
+ * Bornes de la taille de BoGo, en %. Déclarées avant `state`, que loadSettings remplit : dans
+ * l'appli construite, une constante déclarée plus bas vaudrait encore undefined à ce moment-là.
+ */
+const SCALE_MIN = 70;
+const SCALE_MAX = 130;
 // AoE4World voit une partie quelques secondes après son lancement : inutile d'interroger plus souvent.
 const POLL_SECONDS = 10;
 
@@ -64,6 +83,8 @@ interface Settings {
   record: boolean;
   /** Taille de BoGo en %, de 70 à 130 (zoom de toute l'interface). */
   scale: number;
+  /** Raccourcis choisis par le joueur (les autres gardent leur valeur par défaut). */
+  hotkeys: Partial<Record<HotkeyAction, string>>;
 }
 
 type VisionEvent =
@@ -207,7 +228,7 @@ function play(id: string) {
   state.view = "play";
   resetEngine();
   saveSession();
-  // En partie, les clics passent au jeu ; ⌘⌥L pour cliquer dans BoGo.
+  // En partie, les clics passent au jeu ; le raccourci « Verrouiller » pour cliquer dans BoGo.
   setLocked(true);
   const saved = current();
   if (state.settings.record && saved) {
@@ -230,26 +251,38 @@ function recordEvent(event: Record<string, unknown>) {
 }
 
 async function setLocked(locked: boolean) {
-  state.locked = locked;
+  // Sans raccourci pour déverrouiller, BoGo deviendrait intouchable : il reste déverrouillé.
+  state.locked = locked && !hotkeyErrors.lock;
   render();
-  await appWindow.setIgnoreCursorEvents(locked).catch(() => {});
+  await appWindow.setIgnoreCursorEvents(state.locked).catch(() => {});
 }
 
+/** BoGo n'a pas d'icône dans le Dock : sans raccourci pour le réafficher, on ne le masque pas. */
+function hideOverlay() {
+  if (!hotkeyErrors.toggle) appWindow.hide();
+}
+
+/** Raccourcis que le système a refusés (déjà pris par une autre appli), affichés dans ⚙. */
+let hotkeyErrors: Partial<Record<HotkeyAction, string>> = {};
+
+const HOTKEY_HANDLERS: Record<HotkeyAction, () => unknown> = {
+  next: () => goToStep(state.step + 1),
+  previous: () => goToStep(state.step - 1),
+  lock: () => setLocked(!state.locked),
+  mini: () => toggleMini(),
+  toggle: async () => ((await appWindow.isVisible()) ? appWindow.hide() : appWindow.show()),
+};
+
 async function registerHotkeys() {
-  const actions: [string, () => unknown][] = [
-    [HOTKEYS.next, () => goToStep(state.step + 1)],
-    [HOTKEYS.previous, () => goToStep(state.step - 1)],
-    [HOTKEYS.lock, () => setLocked(!state.locked)],
-    [HOTKEYS.mini, () => toggleMini()],
-    [HOTKEYS.toggle, async () => ((await appWindow.isVisible()) ? appWindow.hide() : appWindow.show())],
-  ];
-  for (const [shortcut, action] of actions) {
+  hotkeyErrors = {};
+  await unregisterAll().catch(() => {});
+  for (const { action } of HOTKEY_ACTIONS) {
     try {
-      await register(shortcut, (event) => {
-        if (event.state === "Pressed") action();
+      await register(HOTKEYS[action], (event) => {
+        if (event.state === "Pressed") HOTKEY_HANDLERS[action]();
       });
     } catch (err) {
-      console.error(`Raccourci ${shortcut} indisponible`, err);
+      hotkeyErrors[action] = errorText(err);
     }
   }
 }
@@ -446,14 +479,13 @@ function loadSettings(): Settings {
       showNext: s.showNext === true,
       record: s.record === true,
       scale: clampScale(Number(s.scale ?? 100)),
+      hotkeys: typeof s.hotkeys === "object" && s.hotkeys ? s.hotkeys : {},
     };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false, scale: 100 };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false, scale: 100, hotkeys: {} };
   }
 }
 
-const SCALE_MIN = 70;
-const SCALE_MAX = 130;
 
 function clampScale(scale: number): number {
   return Number.isFinite(scale) ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(scale / 5) * 5)) : 100;
@@ -519,6 +551,10 @@ function restoreSession() {
 // ---------- Rendu ----------
 
 function render() {
+  if (state.view !== "settings" || state.mini) {
+    if (capture) endCapture(null);
+    hotkeyMessage = null;
+  }
   document.body.classList.toggle("locked", state.locked);
   document.body.classList.toggle("mini", state.mini);
   if (state.mini) {
@@ -572,6 +608,14 @@ function quitButton(): HTMLElement {
   return quit;
 }
 
+/** Cadenas ; sans raccourci pour déverrouiller, le verrouillage est refusé (voir setLocked). */
+function lockButton(): HTMLElement {
+  const title = hotkeyErrors.lock
+    ? "Verrouillage impossible : le raccourci « Verrouiller » est indisponible (voir ⚙ › Raccourcis)"
+    : `Verrouiller : les clics passent au jeu (${KEYS.lock})`;
+  return button(state.locked ? "🔒" : "🔓", title, () => setLocked(!state.locked));
+}
+
 function header(): HTMLElement {
   const bar = h("header", "bar");
   bar.dataset.tauriDragRegion = "";
@@ -581,7 +625,7 @@ function header(): HTMLElement {
   if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
   actions.append(
     button("⚙", "Réglages", () => (state.view === "settings" ? showLibrary() : showSettings())),
-    button(state.locked ? "🔒" : "🔓", "Verrouiller (clics transmis au jeu)", () => setLocked(!state.locked)),
+    lockButton(),
     quitButton(),
   );
   bar.append(title, actions);
@@ -610,8 +654,8 @@ function playHeader(saved: SavedBuild): HTMLElement {
     button("📚", "Bibliothèque", () => showLibrary()),
     button("⚙", "Réglages", () => showSettings()),
     button("▾", `Réduire (${KEYS.mini})`, () => toggleMini()),
-    button(state.locked ? "🔒" : "🔓", `Verrouiller : les clics passent au jeu (${KEYS.lock})`, () => setLocked(!state.locked)),
-    button("✕", `Masquer BoGo (${KEYS.toggle} pour le réafficher)`, () => appWindow.hide()),
+    lockButton(),
+    button("✕", `Masquer BoGo (${KEYS.toggle} pour le réafficher)`, () => hideOverlay()),
   );
 
   const step = steps[state.step];
@@ -979,7 +1023,7 @@ function civsView(): HTMLElement {
     tile.onclick = () => showLibrary(civ);
     grid.append(tile);
   }
-  view.append(guidesButton(), grid, importForm(), h("p", "hint", HOTKEY_HINT));
+  view.append(guidesButton(), grid, importForm(), h("p", "hint", hotkeyHint()));
   return view;
 }
 
@@ -1062,6 +1106,80 @@ function stepLog(): HTMLElement {
   if (!lines.length) log.append(h("span", "", "aucun pour l'instant"));
   for (const line of lines) log.append(h("span", "", line));
   return log;
+}
+
+/** Saisie d'un raccourci en cours : elle survit aux redessins et s'arrête en quittant les réglages. */
+let capture: { action: HotkeyAction; stop: () => void } | null = null;
+let hotkeyMessage: { text: string; error: boolean } | null = null;
+
+/** Raccourcis modifiables : « Changer », puis taper la combinaison voulue (Échap pour annuler). */
+function hotkeySettings(): HTMLElement {
+  const box = h("div", "hotkeys", h("strong", "", "Raccourcis"));
+  for (const { action, label } of HOTKEY_ACTIONS) {
+    const capturing = capture?.action === action;
+    const key = h("span", capturing ? "key capturing" : "key", capturing ? "Tape la combinaison…" : KEYS[action]);
+    const row = h("div", "hotkey-row", h("span", "", label), key);
+    row.append(button("Changer", `Changer le raccourci « ${label} »`, () => captureHotkey(action)));
+    if (state.settings.hotkeys[action]) {
+      row.append(button("Défaut", `Revenir à ${hotkeyLabel(DEFAULT_HOTKEYS[action])}`, () => saveHotkey(action, "")));
+    }
+    if (hotkeyErrors[action]) {
+      row.append(h("span", "status error", "Indisponible (déjà pris par une autre appli ?) : choisis-en un autre."));
+    }
+    box.append(row);
+  }
+  if (hotkeyMessage) box.append(h("p", hotkeyMessage.error ? "status error" : "status", hotkeyMessage.text));
+  return box;
+}
+
+/** Pendant la saisie, les raccourcis de BoGo sont coupés : la combinaison tapée arrive ici. */
+function captureHotkey(action: HotkeyAction) {
+  capture?.stop();
+  unregisterAll().catch(() => {});
+  const onKey = (e: KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) return endCapture(null);
+    const accelerator = acceleratorFromEvent(e);
+    if (!accelerator) return;
+    const error = checkHotkey(accelerator, action);
+    if (!error) return endCapture(accelerator);
+    hotkeyMessage = { text: `${hotkeyLabel(accelerator)} : ${error}`, error: true };
+    render();
+  };
+  window.addEventListener("keydown", onKey, true);
+  capture = { action, stop: () => window.removeEventListener("keydown", onKey, true) };
+  hotkeyMessage = { text: "Échap pour annuler.", error: false };
+  render();
+}
+
+/** Fin de saisie : nouveau raccourci enregistré, ou (Échap, sortie des réglages) raccourcis remis. */
+function endCapture(accelerator: string | null) {
+  const action = capture?.action;
+  capture?.stop();
+  capture = null;
+  hotkeyMessage = null;
+  if (accelerator && action) saveHotkey(action, accelerator);
+  else registerHotkeys().then(render);
+}
+
+/** Un raccourci refusé par le système (pris par une autre appli) n'est pas gardé. */
+async function saveHotkey(action: HotkeyAction, accelerator: string) {
+  const previous = state.settings.hotkeys;
+  const hotkeys = { ...previous };
+  if (accelerator && !sameHotkey(accelerator, DEFAULT_HOTKEYS[action])) hotkeys[action] = accelerator;
+  else delete hotkeys[action];
+  setHotkeys(hotkeys);
+  await registerHotkeys();
+  if (accelerator && hotkeyErrors[action]) {
+    hotkeyMessage = { text: `${hotkeyLabel(accelerator)} : refusé par le système (déjà pris par une autre appli ?).`, error: true };
+    setHotkeys(previous);
+    await registerHotkeys();
+  } else {
+    state.settings = { ...state.settings, hotkeys };
+    store(SETTINGS_KEY, state.settings);
+  }
+  render();
 }
 
 /** Où va l'enregistrement : un fichier local par BO lancé, jamais envoyé. */
@@ -1188,6 +1306,7 @@ function settingsView(): HTMLElement {
       showNext: showNext.checked,
       record: record.checked,
       scale: state.settings.scale,
+      hotkeys: state.settings.hotkeys,
     });
     showLibrary();
   });
@@ -1211,6 +1330,7 @@ function settingsView(): HTMLElement {
         : "Lecture de l'écran : bientôt sous Windows. En attendant, suivi manuel avec les raccourcis.",
     ),
     h("label", "scale", "Taille de BoGo ", scaleValue, scale),
+    hotkeySettings(),
     visionStatus(),
     h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
     h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
@@ -1220,7 +1340,7 @@ function settingsView(): HTMLElement {
     stepLog(),
     save,
     message,
-    h("p", "hint", HOTKEY_HINT),
+    h("p", "hint", hotkeyHint()),
   );
   if (state.gameError) {
     message.className = "status error";
@@ -1267,9 +1387,11 @@ function select(options: [string, string][], value: string, onChange: (v: string
 restoreSession();
 resetEngine();
 if (!state.settings.profileId) state.view = "settings";
+setHotkeys(state.settings.hotkeys);
 render();
 if (state.settings.scale !== 100) applyScale();
-registerHotkeys();
+// Redessin une fois les raccourcis en place : ceux que le système refuse s'affichent dans ⚙.
+const hotkeysReady = registerHotkeys().then(render);
 pollGame();
 setInterval(pollGame, POLL_SECONDS * 1000);
 listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
@@ -1285,9 +1407,10 @@ setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
 setInterval(() => {
   if (state.view === "play" && !state.mini && readingState() !== shownReading) render();
 }, 1000);
-// Lancé au démarrage sur un BO en cours : clics vers le jeu, enregistrement repris.
+// Lancé au démarrage sur un BO en cours : clics vers le jeu (une fois le raccourci pour
+// déverrouiller en place), enregistrement repris.
 if (state.view === "play") {
-  setLocked(true);
+  hotkeysReady.then(() => setLocked(true));
   if (state.settings.record) startRecording();
 }
 
