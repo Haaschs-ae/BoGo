@@ -113,6 +113,9 @@ export interface EngineState {
   affordable: boolean;
   villagers: number | null;
   misplacement: Misplacement | null;
+  /** Villageois en plus de la cible alors que la répartition de l'étape n'est pas faite
+   *  (attaque, choix du joueur) : BoGo reste sur l'étape, l'interface propose ⌘⌥→. */
+  drift: number;
 }
 
 const CONFIRM_READINGS = 2;
@@ -120,12 +123,15 @@ const MISPLACEMENT_SECONDS = 3;
 const SPEND_RATIO = 0.75;
 /** Le TC peut coûter moins cher après certaines technologies : seuil plus bas. */
 const TC_SPEND_RATIO = 0.6;
-/** Si le clic n'a pas été vu, on avance quand même après ce nombre de villageois en plus. */
-const FALLBACK_EXTRA_VILLAGERS = 4;
-/** Répartition pas encore atteinte : on avance quand même après ce nombre de villageois en plus. */
-const UNBALANCED_EXTRA_VILLAGERS = 3;
 /** Villageois manquants tolérés sur la répartition (en chemin, lecture) en plus des bâtisseurs. */
 const DISTRIBUTION_TOLERANCE = 1;
+/**
+ * Une partie n'est pas lisse (attaque, villageois en plus) : BoGo avance prudemment. Chaque
+ * étape reste affichée au moins ce temps avant un passage automatique, une étape à la fois,
+ * et jamais sur le seul nombre de villageois si la répartition n'est pas faite, ni pour un
+ * passage d'âge ou un TC (il faut voir la dépense, le landmark en construction, ou ⌘⌥→).
+ */
+const MIN_STEP_SECONDS = 5;
 
 export class BuildEngine {
   index = 0;
@@ -143,6 +149,8 @@ export class BuildEngine {
   private history: { at: number; stock: Resources }[] = [];
   private misplacedSince: { key: string; at: number } | null = null;
   private last: HudReading | null = null;
+  /** Heure d'arrivée sur l'étape (posée à la lecture suivante après un changement). */
+  private enteredAt: number | null = null;
 
   constructor(
     private readonly steps: BuildOrderStep[],
@@ -155,8 +163,13 @@ export class BuildEngine {
   setStep(index: number, reason = "clavier") {
     const target = Math.max(0, Math.min(index, this.steps.length - 1));
     if (target !== this.index) this.record(target, reason);
-    this.index = target;
+    this.moveTo(target);
     this.floor = this.villagers ?? 0;
+  }
+
+  private moveTo(index: number) {
+    if (index !== this.index) this.enteredAt = null;
+    this.index = index;
   }
 
   private record(to: number, reason: string) {
@@ -165,11 +178,12 @@ export class BuildEngine {
 
   update(reading: HudReading, now: number): EngineState {
     this.last = reading;
+    this.enteredAt ??= now;
     this.estimateVillagers(reading);
     this.history = [...this.history.filter((h) => now - h.at <= 8000), { at: now, stock: reading.stock }];
 
     this.applySpending(now);
-    this.advanceOnVillagers();
+    this.advanceOnVillagers(now);
     return this.state(now);
   }
 
@@ -186,6 +200,7 @@ export class BuildEngine {
       affordable,
       villagers: this.villagers,
       misplacement: this.checkMisplacement(now),
+      drift: this.drift(goal),
     };
   }
 
@@ -211,34 +226,24 @@ export class BuildEngine {
     this.villagers = Math.min(Math.max(estimate, counted), population);
   }
 
-  private advanceOnVillagers() {
+  /** Une étape à la fois, après un temps minimum, si la cible et la répartition sont atteintes. */
+  private advanceOnVillagers(now: number) {
     const v = this.villagers;
-    if (v === null || v <= this.floor) return;
-    const start = this.index;
-    let reason = "";
-    while (this.index < this.steps.length - 1) {
-      const goal = stepGoal(this.steps, this.index);
-      const target = this.targets[this.index];
-      const needed = goal.kind === "villagers" ? target : target + FALLBACK_EXTRA_VILLAGERS;
-      if (v <= needed) break;
-      // Répartition de l'étape pas encore faite (trop à la nourriture, pas assez à l'or…) :
-      // on reste sur l'étape, l'alerte dit quoi corriger, sauf si le joueur a décroché du BO.
-      const balanced = this.distributionReached(this.index);
-      if (goal.kind === "villagers" && !balanced && v < target + UNBALANCED_EXTRA_VILLAGERS) break;
-      reason ||=
-        goal.kind !== "villagers"
-          ? `${v} villageois, clic non vu`
-          : balanced
-            ? `${v} villageois > ${target}`
-            : `${v} villageois, répartition pas suivie`;
-      this.index++;
-    }
-    if (this.index !== start) {
-      const end = this.index;
-      this.index = start;
-      this.record(end, reason);
-      this.index = end;
-    }
+    if (v === null || v <= this.floor || this.index >= this.steps.length - 1) return;
+    if (now - (this.enteredAt ?? now) < MIN_STEP_SECONDS * 1000) return;
+    // Passage d'âge, TC : jamais sur le seul nombre de villageois.
+    if (stepGoal(this.steps, this.index).kind !== "villagers") return;
+    const target = this.targets[this.index];
+    if (v <= target || !this.distributionReached(this.index)) return;
+    this.record(this.index + 1, `${v} villageois > ${target}, répartition faite`);
+    this.moveTo(this.index + 1);
+    this.enteredAt = now;
+  }
+
+  private drift(goal: StepGoal): number {
+    if (this.villagers === null || goal.kind !== "villagers") return 0;
+    const extra = this.villagers - this.targets[this.index];
+    return extra > 0 && !this.distributionReached(this.index) ? extra : 0;
   }
 
   /** Les villageois sont répartis comme l'étape le demande, à quelques villageois près. */
@@ -259,7 +264,7 @@ export class BuildEngine {
       if (stepGoal(this.steps, i).kind !== "age") continue;
       const to = Math.min(i + 1, this.steps.length - 1);
       if (to !== this.index) this.record(to, "passage d'âge en cours (vu en haut de l'écran)");
-      this.index = to;
+      this.moveTo(to);
       this.floor = 0;
       return;
     }
@@ -275,19 +280,18 @@ export class BuildEngine {
     const paid = (cost: Cost, ratio: number) =>
       Object.entries(cost).every(([r, n]) => drop(r as Resource) >= ratio * (n ?? 0));
 
-    // Le joueur peut cliquer un peu avant ou après l'étape prévue : on regarde les prochaines étapes.
-    for (let i = this.index; i < Math.min(this.index + 3, this.steps.length); i++) {
+    // Le joueur peut cliquer un peu avant l'étape prévue : on regarde un peu plus loin pour un
+    // passage d'âge (dépense très reconnaissable), à peine pour un TC (palissades en urgence…).
+    for (let i = this.index; i < this.steps.length; i++) {
       const goal = stepGoal(this.steps, i);
+      if (i > this.index + (goal.kind === "tc" ? 1 : 2)) break;
       const options = goalCosts(goal, this.civilization);
-      // Pour un TC, seule la plus grosse ressource du coût compte, avec un seuil plus bas.
-      const done =
-        goal.kind === "tc"
-          ? options.some((cost) => paid(Object.fromEntries([largest(cost)]), TC_SPEND_RATIO))
-          : options.some((cost) => paid(cost, SPEND_RATIO));
+      // TC : toutes les ressources de son coût, avec un seuil plus bas (technologies qui le réduisent).
+      const done = options.some((cost) => paid(cost, goal.kind === "tc" ? TC_SPEND_RATIO : SPEND_RATIO));
       if (done) {
         const to = Math.min(i + 1, this.steps.length - 1);
         this.record(to, goal.kind === "tc" ? "TC payé" : "passage d'âge payé");
-        this.index = to;
+        this.moveTo(to);
         this.floor = 0;
         this.history = [];
         return;
@@ -322,10 +326,6 @@ export class BuildEngine {
     if (now - this.misplacedSince.at < MISPLACEMENT_SECONDS * 1000) return null;
     return { from, to, count };
   }
-}
-
-function largest(cost: Cost): [Resource, number] {
-  return (Object.entries(cost) as [Resource, number][]).sort((a, b) => b[1] - a[1])[0];
 }
 
 /** Valeur retenue seulement après deux lectures identiques de suite (chiffre mal lu). */

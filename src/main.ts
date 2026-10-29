@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
 import { extractProfileId, fetchLastGame, kindLabel, type DetectedGame } from "./aoe4world";
@@ -15,15 +15,11 @@ import {
 import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
 import { ClockTracker, formatClock, stepForClock } from "./clock";
-import {
-  AGE_NAMES,
-  BuildEngine,
-  effectiveVillagerTargets,
-  nextVillagerResources,
-  type EngineState,
-} from "./engine";
+import { foodSource, stepBuilding, stepLandmark, villagerFocus } from "./display";
+import { AGE_NAMES, BuildEngine, effectiveVillagerTargets, type EngineState } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
 import { ageUpBuilders } from "./top";
+import { looksEnglish, translateText } from "./translate";
 import {
   addBuild,
   filterBuilds,
@@ -43,9 +39,10 @@ const HOTKEYS = {
   previous: "CommandOrControl+Alt+ArrowLeft",
   lock: "CommandOrControl+Alt+L",
   toggle: "CommandOrControl+Alt+B",
+  mini: "CommandOrControl+Alt+M",
 };
 
-const HOTKEY_HINT = "⌘⌥←/→ étapes · ⌘⌥L verrouiller · ⌘⌥B afficher/masquer";
+const HOTKEY_HINT = "⌘⌥←/→ étapes · ⌘⌥M réduire · ⌘⌥L verrouiller · ⌘⌥B afficher/masquer";
 
 const SESSION_KEY = "bogo.session.v1";
 const SETTINGS_KEY = "bogo.settings.v1";
@@ -57,6 +54,8 @@ interface Settings {
   apiKey: string;
   /** Lire l'horloge du jeu dans la fenêtre GeForce Now. */
   readScreen: boolean;
+  /** Traduire en français les consignes des BO écrits en anglais. */
+  translate: boolean;
 }
 
 type VisionEvent =
@@ -95,6 +94,10 @@ interface State {
   /** Dernière lecture du panneau (population, ressources, villageois) et son heure. */
   hud: { reading: HudReading; at: number } | null;
   engine: EngineState | null;
+  /** Fenêtre réduite à une pastille (BO terminé, ou à la demande). */
+  mini: boolean;
+  /** Le BO en cours est arrivé au bout. */
+  finished: boolean;
 }
 
 const state: State = {
@@ -114,6 +117,8 @@ const state: State = {
   autoStep: null,
   hud: null,
   engine: null,
+  mini: false,
+  finished: false,
 };
 const clock = new ClockTracker();
 /** Moteur du BO en cours, recréé à chaque lancement d'un BO. */
@@ -127,31 +132,8 @@ const RESOURCE_ICONS: Record<Resource, [string, string, string]> = {
 };
 const VILLAGER_ICON = "unit_worker/villager.webp";
 const TC_ICON = "building_economy/town-center.webp";
-restoreSession();
-resetEngine();
-
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const appWindow = getCurrentWindow();
-
-if (!state.settings.profileId) state.view = "settings";
-render();
-registerHotkeys();
-pollGame();
-setInterval(pollGame, POLL_SECONDS * 1000);
-listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
-// La lecture de l'écran ne démarre qu'une fois l'écoute en place : sinon une erreur
-// immédiate (autorisation manquante) serait perdue.
-listen<VisionEvent>("vision", (event) => onVision(event.payload)).then(() => {
-  if (state.settings.readScreen) startVision();
-});
-// macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
-setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
-
-document.addEventListener("keydown", (e) => {
-  if (state.view !== "play" || e.target instanceof HTMLTextAreaElement) return;
-  if (e.key === "ArrowRight") goToStep(state.step + 1);
-  if (e.key === "ArrowLeft") goToStep(state.step - 1);
-});
 
 function current(): SavedBuild | undefined {
   return state.library.find((b) => b.id === state.currentId);
@@ -160,6 +142,8 @@ function current(): SavedBuild | undefined {
 function goToStep(step: number) {
   const build = current();
   if (!build) return;
+  // ⌘⌥→ sur la dernière étape : BO terminé.
+  if (step > build.build.build_order.length - 1) return finishBuild();
   state.step = Math.max(0, Math.min(step, build.build.build_order.length - 1));
   engine?.setStep(state.step);
   saveSession();
@@ -184,10 +168,25 @@ function hudIsFresh(now = Date.now()): boolean {
   return !!state.hud && now - state.hud.at < 5000;
 }
 
+/** BO terminé : l'overlay se réduit à une pastille pour ne plus gêner (un clic le rouvre). */
+function finishBuild() {
+  if (state.finished) return;
+  state.finished = true;
+  state.mini = true;
+  render();
+}
+
+function toggleMini() {
+  state.mini = !state.mini;
+  render();
+}
+
 function play(id: string) {
   state.currentId = id;
   state.step = 0;
   state.autoStep = null;
+  state.finished = false;
+  state.mini = false;
   state.view = "play";
   resetEngine();
   saveSession();
@@ -205,6 +204,7 @@ async function registerHotkeys() {
     [HOTKEYS.next, () => goToStep(state.step + 1)],
     [HOTKEYS.previous, () => goToStep(state.step - 1)],
     [HOTKEYS.lock, () => setLocked(!state.locked)],
+    [HOTKEYS.mini, () => toggleMini()],
     [HOTKEYS.toggle, async () => ((await appWindow.isVisible()) ? appWindow.hide() : appWindow.show())],
   ];
   for (const [shortcut, action] of actions) {
@@ -340,6 +340,13 @@ function onVision(event: VisionEvent) {
         state.step = state.engine.index;
         saveSession();
       }
+      // Dernière étape atteinte avec ses villageois : BO terminé.
+      const steps = current()?.build.build_order ?? [];
+      const last = steps.length - 1;
+      if (!state.finished && state.step === last && (state.engine.villagers ?? 0) >= effectiveVillagerTargets(steps)[last]) {
+        finishBuild();
+        return;
+      }
     }
     if (state.view === "play") render();
     else updateVisionStatus();
@@ -387,9 +394,14 @@ function updateVisionStatus() {
 function loadSettings(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
-    return { profileId: String(s.profileId ?? ""), apiKey: String(s.apiKey ?? ""), readScreen: s.readScreen !== false };
+    return {
+      profileId: String(s.profileId ?? ""),
+      apiKey: String(s.apiKey ?? ""),
+      readScreen: s.readScreen !== false,
+      translate: s.translate !== false,
+    };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true };
   }
 }
 
@@ -428,10 +440,38 @@ function restoreSession() {
 
 function render() {
   document.body.classList.toggle("locked", state.locked);
+  document.body.classList.toggle("mini", state.mini);
+  if (state.mini) {
+    app.replaceChildren(miniView());
+    fitWindow();
+    return;
+  }
   const views = { civs: civsView, civ: civView, settings: settingsView, play: () => playView(current()!) };
   const view = state.view === "play" && !current() ? "civs" : state.view;
   const body = view === "civ" && !state.civ ? civsView() : views[view]();
-  app.replaceChildren(header(), body);
+  app.replaceChildren(view === "play" ? playHeader(current()!) : header(), body);
+  fitWindow();
+}
+
+const PLAY_WIDTH = 360;
+const PANEL_WIDTH = 380;
+const MAX_HEIGHT = 680;
+let windowSize = "";
+
+/** La fenêtre prend la taille de son contenu : rien de vide ne cache le jeu. */
+function fitWindow() {
+  requestAnimationFrame(() => {
+    const width = state.mini ? Math.ceil(app.getBoundingClientRect().width) : state.view === "play" ? PLAY_WIDTH : PANEL_WIDTH;
+    const content = [...app.children].reduce(
+      (sum, el) => sum + (el.tagName === "MAIN" ? el.scrollHeight : (el as HTMLElement).offsetHeight),
+      2,
+    );
+    const height = Math.min(Math.ceil(content), MAX_HEIGHT);
+    const size = `${width}x${height}`;
+    if (size === windowSize) return;
+    windowSize = size;
+    appWindow.setSize(new LogicalSize(width, height)).catch(() => {});
+  });
 }
 
 function header(): HTMLElement {
@@ -440,8 +480,7 @@ function header(): HTMLElement {
   const title = h("span", "title", "BoGo", gameStatus());
   title.dataset.tauriDragRegion = "";
   const actions = h("div", "actions");
-  if (state.view === "play") actions.append(button("📚", "Bibliothèque", () => showLibrary()));
-  else if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
+  if (current()) actions.append(button("▶", "Reprendre le BO", () => ((state.view = "play"), render())));
   actions.append(
     button("⚙", "Réglages", () => (state.view === "settings" ? showLibrary() : ((state.view = "settings"), render()))),
     button(state.locked ? "🔒" : "🔓", "Verrouiller (clics transmis au jeu)", () => setLocked(!state.locked)),
@@ -451,132 +490,247 @@ function header(): HTMLElement {
   return bar;
 }
 
+/** En-tête de partie : avancement en segments, étape, âge, horloge, et les boutons (discrets). */
+function playHeader(saved: SavedBuild): HTMLElement {
+  const steps = saved.build.build_order;
+  const head = h("header", "play-head");
+  head.dataset.tauriDragRegion = "";
+
+  const progress = h("div", "segments");
+  progress.dataset.tauriDragRegion = "";
+  if (steps.length <= 24) {
+    steps.forEach((_, i) => progress.append(h("i", i < state.step ? "done" : i === state.step ? "now" : "")));
+  } else {
+    progress.classList.add("bar-mode");
+    const fill = h("i", "done");
+    fill.style.width = `${((state.step + 1) / steps.length) * 100}%`;
+    progress.append(fill);
+  }
+  const actions = h(
+    "div",
+    "actions",
+    button("📚", "Bibliothèque", () => showLibrary()),
+    button("⚙", "Réglages", () => ((state.view = "settings"), render())),
+    button("▾", "Réduire (⌘⌥M)", () => toggleMini()),
+    button(state.locked ? "🔒" : "🔓", "Verrouiller : les clics passent au jeu (⌘⌥L)", () => setLocked(!state.locked)),
+    button("✕", "Quitter BoGo", () => invoke("quit")),
+  );
+
+  const step = steps[state.step];
+  const age = step.age >= 1 && step.age <= 4 ? step.age : null;
+  const where = h("span", "where");
+  where.append(
+    button("◀", "Étape précédente (⌘⌥←)", () => goToStep(state.step - 1)),
+    h("span", "", "Étape ", h("b", "", `${state.step + 1}/${steps.length}`)),
+    button("▶", "Étape suivante (⌘⌥→)", () => goToStep(state.step + 1)),
+  );
+  if (age) where.append(h("span", "muted", " · "), gameIcon(`age/age_${age}.webp`, ""), h("span", "", ` Âge ${ROMAN[age]}`));
+  const gameTime = clock.current(Date.now());
+  const right = gameTime !== null ? h("span", "clock", `⏱ ${formatClock(gameTime)}`) : h("span", "bo-name", saved.build.name);
+  head.append(h("div", "head-row", progress, actions), h("div", "meta", where, right));
+  return head;
+}
+
+const ROMAN: Record<number, string> = { 1: "I", 2: "II", 3: "III", 4: "IV" };
+/** Villageois en plus (répartition pas suivie) à partir desquels on propose de passer l'étape. */
+const DRIFT_HINT = 3;
+
+/**
+ * Vue de partie, du plus important au détail : alerte (s'il y en a une), action à faire
+ * en grand, répartition réel / cible, consignes traduites, puis l'étape suivante.
+ */
 function playView(saved: SavedBuild): HTMLElement {
   const steps = saved.build.build_order;
   const step = steps[state.step];
   const next = steps[state.step + 1];
-  const now = Date.now();
-  const hud = hudIsFresh(now) ? state.hud!.reading : null;
+  const hud = hudIsFresh() ? state.hud!.reading : null;
   const auto = hud && state.engine?.index === state.step ? state.engine : null;
-
-  const gameTime = clock.current(now);
-  const followsClock = stepForClock(steps, 0) !== null;
-  const count = h("span", "bo-count", `${state.step + 1}/${steps.length}`);
-  if (gameTime !== null) {
-    const live = h("span", "chip live", `⏱ ${formatClock(gameTime)}`);
-    live.title = hud ? "Horloge du jeu" : followsClock ? "Horloge du jeu : le BO avance tout seul" : "Horloge du jeu";
-    count.prepend(live, " ");
-  }
+  const translate = shouldTranslate(saved);
 
   const view = h("main", "play");
-  view.append(h("div", "bo-title", h("span", "bo-name", saved.build.name), count));
-  if (auto) view.append(...alerts(auto, hud!));
-  if (auto && auto.goal.kind !== "villagers") view.append(goalBanner(auto, hud!));
-  else {
-    const hint = nextVillagersHint(steps);
-    if (hint) view.append(hint);
-  }
-  view.append(targets(step, effectiveVillagerTargets(steps)[state.step], hud), notes(step.notes, "notes"));
-  if (next) view.append(h("div", "next-label", "Ensuite"), notes(next.notes.slice(0, 2), "notes next"));
+  const alert = alertBanner(auto, hud);
+  if (alert) view.append(alert);
 
-  const nav = h("div", "nav");
-  const prev = button("◀", "Étape précédente", () => goToStep(state.step - 1));
-  const nextBtn = button("▶", "Étape suivante", () => goToStep(state.step + 1));
-  prev.disabled = state.step === 0;
-  nextBtn.disabled = !next;
-  const mode = hud
-    ? "Suivi des villageois · ⌘⌥← / ⌘⌥→"
-    : gameTime !== null && !followsClock
-      ? "Pas de temps dans ce BO : ⌘⌥← / ⌘⌥→"
-      : "⌘⌥← / ⌘⌥→";
-  nav.append(prev, h("span", "hint", mode), nextBtn);
-  view.append(nav);
+  if (auto && auto.goal.kind !== "villagers") {
+    view.append(goalBlock(auto, hud!, step));
+  } else {
+    const hero = heroBlock(steps, hud);
+    if (hero) view.append(hero);
+    view.append(bulletList(step, effectiveVillagerTargets(steps)[state.step], hud));
+    // Villageois en plus sans la répartition de l'étape (attaque, choix du joueur) : BoGo ne
+    // saute pas l'étape tout seul, il propose de le faire.
+    if (auto && auto.drift >= DRIFT_HINT) {
+      view.append(h("div", "drift", `+${auto.drift} villageois sans suivre cette étape : ⌘⌥→ pour passer à la suite`));
+    }
+  }
+  view.append(notes(step.notes, "notes", translate));
+  if (next) view.append(h("div", "next", h("span", "muted", "Ensuite · "), ...noteParts(next.notes[0] ?? "", translate)));
   return view;
 }
 
-/** « Passe à l'âge II » ou « Construis un TC », avec les ressources qui manquent. */
-function goalBanner(auto: EngineState, hud: HudReading): HTMLElement {
-  const title =
-    auto.goal.kind === "age"
-      ? h("strong", "", gameIcon(`age/age_${auto.goal.age}.webp`, "⬆"), ` Passe à l'âge ${AGE_NAMES[auto.goal.age] ?? auto.goal.age}`)
-      : h("strong", "", gameIcon(TC_ICON, "🏰"), " Construis un TC");
-  const banner = h("div", auto.affordable ? "goal ready" : "goal", title);
-  const costs = h("div", "goal-costs");
-  for (const [r, amount] of Object.entries(auto.cost ?? {}) as [Resource, number][]) {
-    const have = hud.stock[r];
-    const chip = h("span", have >= amount ? "chip ok" : "chip", resourceIcon(r), ` ${have}/${amount}`);
-    chip.title = RESOURCE_ICONS[r][1];
-    costs.append(chip);
-  }
-  banner.append(costs, h("span", "goal-hint", auto.affordable ? "C'est le moment : clique !" : "Garde les ressources pour ça"));
-  return banner;
-}
-
-function alerts(auto: EngineState, hud: HudReading): HTMLElement[] {
-  const list: HTMLElement[] = [];
-  const m = auto.misplacement;
+/** Une seule alerte à la fois : erreur de répartition d'abord, puis villageois inactifs. */
+function alertBanner(auto: EngineState | null, hud: HudReading | null): HTMLElement | null {
+  const m = auto?.misplacement;
   if (m) {
-    const vils = m.count > 1 ? `${m.count} vils` : "1 vil";
+    const vils = m.count > 1 ? `${m.count} villageois` : "1 villageois";
     const move = m.count > 1 ? "envoie-les" : "envoie-le";
-    const alert = h("div", "alert", `⚠ ${vils} de trop sur `, resourceLabel(m.from));
-    if (m.to) alert.append(` → ${move} sur `, resourceLabel(m.to));
-    list.push(alert);
+    const alert = h("div", "alert", `⚠ ${vils} de trop ${RESOURCE_PLACE[m.from]} `, resourceIcon(m.from));
+    if (m.to) alert.append(` → ${move} ${RESOURCE_PLACE[m.to]} `, resourceIcon(m.to));
+    return alert;
   }
-  if (hud.idle > 0) {
+  if (hud && hud.idle > 0) {
     const plural = hud.idle > 1 ? "s" : "";
-    list.push(h("div", "alert warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} vil${plural} inactif${plural}`));
+    return h("div", "alert warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} villageois inactif${plural}`);
   }
-  return list;
+  return null;
 }
 
-function nextVillagersHint(steps: BuildOrderStep[]): HTMLElement | null {
-  const entries = Object.entries(nextVillagerResources(steps, state.step)) as [Resource, number][];
-  if (!entries.length) return null;
-  const hint = h("div", "next-vils", "Prochains vils → ");
-  entries.forEach(([r, n], i) => hint.append(i ? ", " : "", resourceLabel(r), ` (+${n})`));
-  return hint;
+const RESOURCE_PLACE: Record<Resource, string> = {
+  food: "à la nourriture",
+  wood: "au bois",
+  gold: "à l'or",
+  stone: "à la pierre",
+};
+
+/** Grande icône du prochain villageois : où l'envoyer, combien, et le bâtiment à poser. */
+function heroBlock(steps: BuildOrderStep[], hud: HudReading | null): HTMLElement | null {
+  const focus = villagerFocus(steps, state.step, hud?.gatherers ?? null);
+  if (!focus) return null;
+  const focusStep = steps[focus.stepIndex];
+  const source = focus.resource === "food" ? foodSource(focusStep) : null;
+  const path = source?.path ?? RESOURCE_ICONS[focus.resource][2];
+  const word = (source?.label ?? RESOURCE_ICONS[focus.resource][1]).toUpperCase();
+
+  const tile = h("div", `tile ${focus.resource}`, gameIcon(path, RESOURCE_ICONS[focus.resource][0]));
+  tile.append(h("span", "badge", `×${focus.count}`));
+  const text = h("div", "hero-text", h("div", "big", word));
+  const building = stepBuilding(focusStep);
+  const extra: (Node | string)[] = [];
+  if (building) extra.push("puis ", gameIcon(building.path, ""), ` ${building.label}`);
+  for (const other of focus.others) extra.push(extra.length ? " · " : "", `+${other.count} `, resourceIcon(other.resource));
+  if (extra.length) text.append(h("div", "sub", ...extra));
+  const kicker = focus.count > 1 ? "PROCHAINS VILLAGEOIS" : "PROCHAIN VILLAGEOIS";
+  return h("div", "primary", h("div", "kicker", kicker), h("div", "action", tile, text));
 }
 
-function targets(step: BuildOrderStep, vilTarget: number, hud: HudReading | null): HTMLElement {
-  const row = h("div", "targets");
-  const chip = (content: (Node | string)[], title: string, className = "chip") => {
-    const c = h("span", className, ...content);
-    c.title = title;
-    row.append(c);
-  };
-  if (step.time) chip([`🕒 ${step.time}`], "Temps visé");
-  const vil = gameIcon(VILLAGER_ICON, "👤");
-  const villagers = state.engine?.villagers ?? hud?.villagers;
-  if (hud && villagers != null) chip([vil, ` ${villagers}/${vilTarget}`], "Villageois : estimés / visés", villagers >= vilTarget ? "chip ok" : "chip");
-  else if (vilTarget > 0) chip([vil, ` ${vilTarget}`], "Villageois visés");
+/** Passage d'âge ou TC à poser : vert et « clique ! » dès qu'on a de quoi payer. */
+function goalBlock(auto: EngineState, hud: HudReading, step: BuildOrderStep): HTMLElement {
+  const isAge = auto.goal.kind === "age";
+  const age = auto.goal.kind === "age" ? auto.goal.age : 0;
+  const tile = h("div", "tile goal-tile", gameIcon(isAge ? `age/age_${age}.webp` : TC_ICON, isAge ? "⬆" : "🏰"));
+  const text = h("div", "hero-text", h("div", "big", isAge ? `ÂGE ${ROMAN[age] ?? age}` : "NOUVEAU TC"));
+  const landmark = isAge ? stepLandmark(step) : null;
+  const sub = h("div", "sub", isAge ? (AGE_NAMES[age] ?? "").replace(/^[IV]+ · /, "") : "Town Center");
+  if (landmark) sub.append(" · ", gameIcon(landmark.path, ""), ` ${landmark.label}`);
+  text.append(sub);
 
+  const costs = h("div", "bullets");
+  for (const [r, amount] of Object.entries(auto.cost ?? {}) as [Resource, number][]) {
+    costs.append(bulletRow(r, hud.stock[r], amount, { cost: true }));
+  }
+  const block = h(
+    "div",
+    auto.affordable ? "primary ready" : "primary",
+    h("div", "kicker", isAge ? "PASSAGE D'ÂGE" : "NOUVEAU TC"),
+    h("div", "action", tile, text),
+    costs,
+  );
+  block.append(
+    auto.affordable ? h("div", "cta", "C'est le moment : clique !") : h("div", "sub", "Garde les ressources pour ça"),
+  );
+  return block;
+}
+
+/** Barres réel / cible : villageois, puis chaque ressource utile à l'étape. */
+function bulletList(step: BuildOrderStep, vilTarget: number, hud: HudReading | null): HTMLElement {
+  const list = h("div", "bullets");
+  const villagers = state.engine?.villagers ?? hud?.villagers ?? null;
+  if (vilTarget > 0) list.append(bulletRow("villagers", hud ? villagers : null, vilTarget));
   for (const r of RESOURCES) {
     const target = step.resources[r];
     // -1 signifie « non précisé » dans le format RTS_Overlay.
-    if (target === -1) continue;
-    const name = RESOURCE_ICONS[r][1];
-    if (!hud) {
-      chip([resourceIcon(r), ` ${target}`], name);
-      continue;
-    }
-    const have = hud.gatherers[r];
-    if (have === 0 && target === 0) continue;
-    const status = have > target ? "chip over" : have === target ? "chip ok" : "chip";
-    chip([resourceIcon(r), ` ${have}/${target}`], `${name} : villageois en jeu / visés`, status);
+    if (target < 0) continue;
+    const have = hud ? hud.gatherers[r] : null;
+    if (target === 0 && !have) continue;
+    list.append(bulletRow(r, have, target));
   }
   const builder = step.resources.builder;
-  if (builder !== undefined && builder > 0) chip([`🔨 ${builder}`], "Bâtisseurs");
-  if (step.age > 0) chip([gameIcon(`age/age_${step.age}.webp`, "Âge"), ` ${["I", "II", "III", "IV"][step.age - 1] ?? step.age}`], "Âge", "chip age");
+  if (builder !== undefined && builder > 0) list.append(h("div", "builders muted", `🔨 ${builder} bâtisseur${builder > 1 ? "s" : ""}`));
+  return list;
+}
+
+/**
+ * Une ligne réel / cible. Sans lecture du panneau, seule la cible est affichée.
+ * Pour un coût (`cost`), en avoir plus que nécessaire est une bonne nouvelle.
+ */
+function bulletRow(
+  key: Resource | "villagers",
+  have: number | null,
+  target: number,
+  { cost = false } = {},
+): HTMLElement {
+  const name = key === "villagers" ? "Villageois" : RESOURCE_ICONS[key][1];
+  const iconEl = key === "villagers" ? gameIcon(VILLAGER_ICON, "👤") : resourceIcon(key);
+  const row = h("div", `bullet ${key}`, iconEl);
+  if (have === null) {
+    row.append(h("div", "label", name[0].toUpperCase() + name.slice(1)), h("div", "value num", `${target}`, h("small", "", " visés")));
+    return row;
+  }
+  const track = h("div", "track");
+  if (cost) {
+    const fill = h("span", "fill");
+    fill.style.width = `${Math.min(have / Math.max(target, 1), 1) * 100}%`;
+    if (have >= target) fill.classList.add("ok");
+    track.append(fill);
+  } else {
+    const scale = Math.max(have, target, 1);
+    const fill = h("span", "fill");
+    fill.style.width = `${(Math.min(have, target) / scale) * 100}%`;
+    const mark = h("span", "target");
+    mark.style.left = `calc(${(target / scale) * 100}% - 1px)`;
+    track.append(fill, mark);
+    if (have > target) {
+      const over = h("span", "over");
+      over.style.left = `${(target / scale) * 100}%`;
+      track.append(over);
+    }
+  }
+  const good = cost ? have >= target : have === target;
+  const bad = !cost && have > target;
+  const value = h("div", `value num${good ? " ok" : bad ? " bad" : ""}`, `${have}`, h("small", "", `/${target}`));
+  if (good) value.append(" ✓");
+  if (bad) value.append(h("small", "", ` +${have - target}`));
+  row.append(h("div", "", h("div", "label", name[0].toUpperCase() + name.slice(1)), track), value);
   return row;
+}
+
+/** Mode réduit : une pastille. « BO terminé » ou l'étape, l'horloge, et les inactifs s'il y en a. */
+function miniView(): HTMLElement {
+  const saved = current();
+  const pill = h("div", "pill");
+  pill.dataset.tauriDragRegion = "";
+  if (state.finished || !saved) pill.append(h("span", "done", "✓ BO terminé"));
+  else pill.append(h("span", "", "Étape ", h("b", "", `${state.step + 1}/${saved.build.build_order.length}`)));
+  if (saved) pill.append(h("span", "muted", saved.build.name));
+  const gameTime = clock.current(Date.now());
+  if (gameTime !== null) pill.append(h("span", "clock", `⏱ ${formatClock(gameTime)}`));
+  const hud = hudIsFresh() ? state.hud!.reading : null;
+  if (hud && hud.idle > 0) pill.append(h("span", "warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} inactif${hud.idle > 1 ? "s" : ""}`));
+  pill.append(button("▴", "Agrandir (⌘⌥M)", () => toggleMini()));
+  for (const child of pill.querySelectorAll("span")) child.dataset.tauriDragRegion = "";
+  return pill;
+}
+
+const englishBuilds = new Map<string, boolean>();
+
+function shouldTranslate(saved: SavedBuild): boolean {
+  if (!state.settings.translate) return false;
+  if (!englishBuilds.has(saved.id)) englishBuilds.set(saved.id, looksEnglish(saved.build));
+  return englishBuilds.get(saved.id)!;
 }
 
 function resourceIcon(r: Resource): HTMLElement {
   return gameIcon(RESOURCE_ICONS[r][2], RESOURCE_ICONS[r][0]);
-}
-
-/** Icône et nom de la ressource : « [icône] bois ». */
-function resourceLabel(r: Resource): HTMLElement {
-  return h("span", "", resourceIcon(r), ` ${RESOURCE_ICONS[r][1]}`);
 }
 
 /** Icône du jeu ; si elle ne charge pas (hors ligne), l'emoji de remplacement. */
@@ -589,17 +743,19 @@ function gameIcon(path: string, fallback: string): HTMLElement {
   return img;
 }
 
-function notes(lines: string[], className: string): HTMLElement {
+function notes(lines: string[], className: string, translate: boolean): HTMLElement {
   const list = h("ul", className);
-  for (const line of lines) {
-    const li = h("li");
-    for (const part of tokenizeNote(line)) {
-      if (part.kind === "text") li.append(part.text);
-      else li.append(icon(part.path));
-    }
-    list.append(li);
-  }
+  for (const line of lines) list.append(h("li", "", ...noteParts(line, translate)));
   return list;
+}
+
+/** Consigne du BO : texte (traduit si besoin, « -> » en vraie flèche) et icônes du jeu. */
+function noteParts(line: string, translate: boolean): (Node | string)[] {
+  return tokenizeNote(line).map((part) => {
+    if (part.kind === "image") return icon(part.path);
+    const text = part.text.replace(/->/g, "→");
+    return translate ? translateText(text) : text;
+  });
 }
 
 function icon(path: string): HTMLElement {
@@ -777,6 +933,9 @@ function settingsView(): HTMLElement {
   const readScreen = document.createElement("input");
   readScreen.type = "checkbox";
   readScreen.checked = state.settings.readScreen;
+  const translate = document.createElement("input");
+  translate.type = "checkbox";
+  translate.checked = state.settings.translate;
   const message = h("p", "status");
 
   const save = button("Enregistrer", "Enregistrer les réglages", () => {
@@ -786,7 +945,7 @@ function settingsView(): HTMLElement {
       message.textContent = "Colle le lien de ton profil aoe4world.com/players/… ou son numéro.";
       return;
     }
-    saveSettings({ profileId, apiKey: apiKey.value.trim(), readScreen: readScreen.checked });
+    saveSettings({ profileId, apiKey: apiKey.value.trim(), readScreen: readScreen.checked, translate: translate.checked });
     showLibrary();
   });
   save.classList.add("primary");
@@ -802,6 +961,7 @@ function settingsView(): HTMLElement {
     ),
     h("label", "checkbox", readScreen, "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"),
     visionStatus(),
+    h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
     stepLog(),
     save,
     message,
@@ -845,3 +1005,28 @@ function select(options: [string, string][], value: string, onChange: (v: string
   s.onchange = () => onChange(s.value);
   return s;
 }
+
+// ---------- Démarrage ----------
+// En fin de fichier : toutes les constantes du module sont alors initialisées.
+
+restoreSession();
+resetEngine();
+if (!state.settings.profileId) state.view = "settings";
+render();
+registerHotkeys();
+pollGame();
+setInterval(pollGame, POLL_SECONDS * 1000);
+listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
+// La lecture de l'écran ne démarre qu'une fois l'écoute en place : sinon une erreur
+// immédiate (autorisation manquante) serait perdue.
+listen<VisionEvent>("vision", (event) => onVision(event.payload)).then(() => {
+  if (state.settings.readScreen) startVision();
+});
+// macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
+setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
+
+document.addEventListener("keydown", (e) => {
+  if (state.view !== "play" || e.target instanceof HTMLTextAreaElement) return;
+  if (e.key === "ArrowRight") goToStep(state.step + 1);
+  if (e.key === "ArrowLeft") goToStep(state.step - 1);
+});

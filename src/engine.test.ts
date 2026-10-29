@@ -150,29 +150,32 @@ describe("BuildEngine", () => {
     expect(effectiveVillagerTargets(withGaps)).toEqual([6, 6, 9, 9, 12]);
     const engine = new BuildEngine(withGaps, "English");
     expect(feed(engine, reading({ food: 6 }), 0).index).toBe(0);
-    // Le 7e villageois passe l'étape 1 et l'étape « maison » (même cible), pas plus.
-    expect(feed(engine, reading({ food: 6, wood: 1 }), 2000).index).toBe(2);
-    expect(engine.log[0]).toBe("Étape 1 → 3 : 7 villageois > 6");
+    // Le 7e villageois fait passer une étape à la fois, avec 5 s au moins sur chacune.
+    expect(feed(engine, reading({ food: 6, wood: 1 }), 5000).index).toBe(1);
+    expect(engine.log[0]).toBe("Étape 1 → 2 : 7 villageois > 6, répartition faite");
+    expect(feed(engine, reading({ food: 6, wood: 1 }), 10000).index).toBe(2);
+    expect(feed(engine, reading({ food: 6, wood: 1 }), 15000).index).toBe(2);
   });
 
-  it("passe à l'étape suivante quand le 7e villageois apparaît", () => {
+  it("passe à l'étape suivante quand le 7e villageois apparaît, après 5 s au moins sur l'étape", () => {
     const engine = new BuildEngine(steps, "English");
     expect(feed(engine, reading({ food: 6 }), 0).index).toBe(0);
-    expect(feed(engine, reading({ food: 6, wood: 1 }), 2000).index).toBe(1);
+    expect(feed(engine, reading({ food: 6, wood: 1 }), 2000).index).toBe(0);
+    expect(feed(engine, reading({ food: 6, wood: 1 }), 5000).index).toBe(1);
   });
 
   it("ignore un chiffre mal lu une seule fois", () => {
     const engine = new BuildEngine(steps, "English");
     feed(engine, reading({ food: 6 }), 0);
-    engine.update(reading({ food: 8 }), 2000);
-    expect(feed(engine, reading({ food: 6 }), 3000).index).toBe(0);
+    engine.update(reading({ food: 8 }), 6000);
+    expect(feed(engine, reading({ food: 6 }), 7000).index).toBe(0);
   });
 
   it("attend le clic sur le monument, puis avance quand les ressources sont dépensées", () => {
     const engine = new BuildEngine(steps, "English");
+    engine.setStep(2);
     const twelve = { food: 6, wood: 3, gold: 3 };
     let state = feed(engine, reading({ ...twelve, food: 7 }, { food: 300, gold: 150 }), 0);
-    expect(state.index).toBe(2);
     expect(state.goal).toEqual({ kind: "age", age: 2 });
     expect(state.affordable).toBe(false);
 
@@ -197,7 +200,7 @@ describe("BuildEngine", () => {
     expect(state.index).toBe(2);
   });
 
-  it("avance après la pose du TC (grosse dépense de bois)", () => {
+  it("avance après la pose du TC (bois et pierre dépensés)", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(4);
     feed(engine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 450, stone: 320 }), 0, 4);
@@ -205,24 +208,31 @@ describe("BuildEngine", () => {
     expect(state.index).toBe(5);
   });
 
-  it("finit par avancer sans clic vu si les villageois ont largement dépassé la cible", () => {
+  it("ne prend pas des palissades posées en urgence (gros bois, pas de pierre) pour un TC", () => {
+    const engine = new BuildEngine(steps, "English");
+    engine.setStep(4);
+    feed(engine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 450, stone: 320 }), 0, 4);
+    expect(feed(engine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 60, stone: 320 }), 4000, 3).index).toBe(4);
+  });
+
+  it("ne saute jamais un passage d'âge sur le seul nombre de villageois (attaque, villageois en plus)", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(2);
-    expect(feed(engine, reading({ food: 10, wood: 3, gold: 3 }), 0).index).toBe(2);
-    // 17 villageois : l'étape d'âge (12 + 4) et la suivante (15) sont dépassées, on s'arrête au TC.
-    expect(feed(engine, reading({ food: 11, wood: 3, gold: 3 }), 2000).index).toBe(4);
+    let t = 0;
+    for (let food = 7; food <= 16; food++, t += 3000) feed(engine, reading({ food, wood: 3, gold: 3 }), t);
+    expect(engine.index).toBe(2);
   });
 
   it("respecte un retour en arrière fait à la main jusqu'au prochain villageois", () => {
     const engine = new BuildEngine(steps, "English");
-    feed(engine, reading({ food: 6, wood: 2 }), 0);
-    expect(engine.index).toBe(1);
+    feed(engine, reading({ food: 6 }), 0);
+    expect(feed(engine, reading({ food: 6, wood: 2 }), 5000).index).toBe(1);
     engine.setStep(0);
-    expect(feed(engine, reading({ food: 6, wood: 2 }), 2000).index).toBe(0);
-    expect(feed(engine, reading({ food: 6, wood: 3 }), 4000).index).toBe(1);
+    expect(feed(engine, reading({ food: 6, wood: 2 }), 10000).index).toBe(0);
+    expect(feed(engine, reading({ food: 6, wood: 3 }), 15000).index).toBe(1);
   });
 
-  it("reste sur l'étape tant que la répartition n'est pas faite (trop à la nourriture, pas assez à l'or) : vu en partie", () => {
+  it("reste sur l'étape tant que la répartition n'est pas faite, même avec des villageois en plus : vu en partie", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(1);
     // Étape 2 : 6 nourriture + 3 bois = 9. Un 10e villageois, mais 9 à la nourriture et 1 au bois.
@@ -230,13 +240,17 @@ describe("BuildEngine", () => {
     expect(state.villagers).toBe(10);
     expect(state.index).toBe(1);
     expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 3 });
+    expect(state.drift).toBe(1);
     // Le joueur corrige : on avance.
-    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 4000);
+    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 5000);
     expect(state.index).toBe(2);
-    // Décroché du BO (3 villageois de plus sans suivre la répartition) : on avance quand même.
+    // Décroché du BO (attaque, choix du joueur) : BoGo reste et propose ⌘⌥→ (drift).
     const lost = new BuildEngine(steps, "English");
     lost.setStep(1);
-    expect(feed(lost, reading({ food: 12 }), 0).index).toBe(2);
+    let t = 0;
+    for (let food = 12; food <= 15; food++, t += 6000) state = feed(lost, reading({ food }), t);
+    expect(state.index).toBe(1);
+    expect(state.drift).toBe(6);
   });
 
   it("ne signale pas les villageois qui attendent de construire (bâtisseurs prévus) : vu en partie", () => {
@@ -249,9 +263,9 @@ describe("BuildEngine", () => {
 
   it("signale un villageois en trop sur une ressource s'il y reste", () => {
     const engine = new BuildEngine(steps, "English");
+    engine.setStep(1);
     // Étape 2 : 6 nourriture, 3 bois. Le 8e part aux moutons au lieu du bois.
     let state = feed(engine, reading({ food: 7, wood: 1 }), 0, 2);
-    expect(state.index).toBe(1);
     expect(state.misplacement).toBeNull();
     state = feed(engine, reading({ food: 7, wood: 1 }), 2000, 3);
     expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 1 });
