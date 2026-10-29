@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
-import { extractProfileId, fetchLastGame, kindLabel, type DetectedGame } from "./aoe4world";
+import { extractProfileId, fetchLastGame, kindLabel, soloOpponent, type DetectedGame } from "./aoe4world";
 import {
   civilizationsOf,
   parseBuildOrder,
@@ -57,6 +57,8 @@ interface Settings {
   translate: boolean;
   /** Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités des nouvelles civs). */
   iconNames: boolean;
+  /** Montrer l'étape suivante (« Ensuite ») sous l'étape en cours ; caché par défaut. */
+  showNext: boolean;
 }
 
 type VisionEvent =
@@ -402,9 +404,10 @@ function loadSettings(): Settings {
       readScreen: s.readScreen !== false,
       translate: s.translate !== false,
       iconNames: s.iconNames !== false,
+      showNext: s.showNext === true,
     };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false };
   }
 }
 
@@ -567,7 +570,10 @@ function playView(saved: SavedBuild): HTMLElement {
     }
   }
   view.append(notes(step.notes, "notes", translate));
-  if (next) view.append(h("div", "next", h("span", "muted", "Ensuite · "), ...noteParts(next.notes[0] ?? "", translate)));
+  // L'étape suivante seulement si le joueur la demande : une étape à la fois, l'essentiel à l'écran.
+  if (next && state.settings.showNext) {
+    view.append(h("div", "next", h("span", "muted", "Ensuite · "), ...noteParts(next.notes[0] ?? "", translate)));
+  }
   return view;
 }
 
@@ -935,7 +941,8 @@ function gameStatus(): HTMLElement {
 
 function gameBanner(game: DetectedGame): HTMLElement {
   const details = [kindLabel(game.kind), game.map].filter(Boolean).join(" · ");
-  const versus = game.opponentCivilizations.length ? ` contre ${game.opponentCivilizations.join(", ")}` : "";
+  const opponent = soloOpponent(game);
+  const versus = opponent ? ` contre ${opponent}` : "";
   return h(
     "div",
     "game-banner",
@@ -961,6 +968,9 @@ function settingsView(): HTMLElement {
   const iconNames = document.createElement("input");
   iconNames.type = "checkbox";
   iconNames.checked = state.settings.iconNames;
+  const showNext = document.createElement("input");
+  showNext.type = "checkbox";
+  showNext.checked = state.settings.showNext;
   const message = h("p", "status");
 
   const save = button("Enregistrer", "Enregistrer les réglages", () => {
@@ -976,6 +986,7 @@ function settingsView(): HTMLElement {
       readScreen: readScreen.checked,
       translate: translate.checked,
       iconNames: iconNames.checked,
+      showNext: showNext.checked,
     });
     showLibrary();
   });
@@ -994,6 +1005,7 @@ function settingsView(): HTMLElement {
     visionStatus(),
     h("label", "checkbox", translate, "Traduire en français les consignes des BO en anglais"),
     h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
+    h("label", "checkbox", showNext, "Montrer aussi l'étape suivante (« Ensuite ») pendant la partie"),
     stepLog(),
     save,
     message,

@@ -10,6 +10,8 @@ export interface DetectedGame {
   startedAt: string;
   myCivilization: string;
   opponentCivilizations: string[];
+  /** Deux équipes d'un joueur chacune. */
+  oneVsOne: boolean;
 }
 
 /** Accepte un lien aoe4world.com/players/5612909-Nom ou l'identifiant seul. */
@@ -49,7 +51,16 @@ export function parseLastGame(data: unknown, profileId: string): DetectedGame | 
       .filter((t) => t !== myTeam)
       .flat()
       .map((p) => (typeof p.civilization === "string" ? civilizationName(p.civilization) : "?")),
+    oneVsOne: teams.length === 2 && teams.every((team) => team.length === 1),
   };
+}
+
+/**
+ * Civ de l'adversaire, seulement en 1v1. À plusieurs, trop de cas possibles pour en tirer un
+ * BO : BoGo n'affiche pas les adversaires et ne s'en sert pas pour conseiller.
+ */
+export function soloOpponent(game: DetectedGame): string | null {
+  return game.oneVsOne ? (game.opponentCivilizations[0] ?? null) : null;
 }
 
 export async function fetchLastGame(profileId: string, apiKey: string): Promise<DetectedGame | null> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractProfileId, kindLabel, parseLastGame } from "./aoe4world";
+import { extractProfileId, kindLabel, parseLastGame, soloOpponent } from "./aoe4world";
 import { civilizationId } from "./civs";
 
 function player(profile_id: number, civilization: string) {
@@ -29,7 +29,17 @@ describe("parseLastGame", () => {
       startedAt: "2026-10-29T10:00:00.000Z",
       myCivilization: "Knights Templar",
       opponentCivilizations: ["English", "Zhu Xi's Legacy"],
+      oneVsOne: false,
     });
+  });
+
+  it("ne donne la civ adverse qu'en 1v1 (à plusieurs, BoGo ignore les adversaires)", () => {
+    const duel = parseLastGame({ ...game, kind: "rm_1v1", teams: [[player(5612909, "rus")], [player(9, "french")]] }, "5612909");
+    expect(duel?.oneVsOne).toBe(true);
+    expect(soloOpponent(duel!)).toBe("French");
+    expect(soloOpponent(parseLastGame(game, "5612909")!)).toBeNull();
+    const ffa = parseLastGame({ ...game, kind: "custom", teams: [[player(5612909, "rus")], [player(8, "french")], [player(9, "mongols")]] }, "5612909");
+    expect(soloOpponent(ffa!)).toBeNull();
   });
 
   it("accepte les joueurs rangés sous une clé « player »", () => {

@@ -47,7 +47,11 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
   (répartition, villageois inactifs), la grande icône du **prochain villageois** (« BOIS ×3,
   puis camp de bûcherons »), les barres **réel / cible** par ressource, les consignes
   **traduites en français** (BO en anglais seulement, désactivable dans ⚙) avec les icônes
-  du jeu en grand, puis l'étape suivante. La fenêtre prend la hauteur de son contenu.
+  du jeu en grand, et le nom écrit à côté des icônes peu connues (baies, moulin…). Une
+  étape à la fois : l'étape suivante (« Ensuite ») ne s'affiche que si tu l'actives dans ⚙.
+  La fenêtre prend la hauteur de son contenu.
+- **Adversaires** : en 1v1, BoGo montre la civ adverse. À plusieurs, il n'affiche rien sur
+  les adversaires.
 - **Mode réduit** : quand le BO est terminé, BoGo se réduit à une pastille (« ✓ BO
   terminé », horloge, inactifs). ⌘⌥M ou ▾ / ▴ pour réduire ou agrandir à tout moment.
 - **Suivi automatique** : BoGo lit l'écran de GeForce Now une fois par seconde (macOS 14
