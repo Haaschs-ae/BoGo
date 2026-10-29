@@ -79,10 +79,14 @@ describe("analyse des étapes", () => {
   });
 
   it("reconnaît un TC moins cher (technologie) et l'aile Advancement des Ayyoubides", () => {
+    // TC de la Horde d'or : 750 bois, une seule ressource. 480 bois dépensés d'un coup peuvent
+    // être quelques bâtiments : il faut presque tout le coût (sonde de l'audit).
     const tcEngine = new BuildEngine(steps, "Golden Horde");
     tcEngine.setStep(4);
     feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 600 }), 0, 4);
-    expect(feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 120 }), 4000, 3).index).toBe(5);
+    expect(feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 120 }), 4000, 3).index).toBe(4);
+    feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 800 }), 20000, 4);
+    expect(feed(tcEngine, reading({ food: 9, wood: 6, gold: 3 }, { wood: 60 }), 24000, 3).index).toBe(5);
 
     const ayyubids = new BuildEngine(steps, "Ayyubids");
     ayyubids.setStep(2);
@@ -135,6 +139,42 @@ describe("estimation des villageois", () => {
     expect(feed(engine, panel({ food: 12 }, 0, 14), 2000).villagers).toBe(12);
     // Un villageois sort et va récolter : on le compte.
     expect(feed(engine, panel({ food: 13 }, 0, 15), 4000).villagers).toBe(13);
+  });
+});
+
+describe("estimation des villageois : scénarios de l'audit", () => {
+  const longSteps = [step(30, { food: 30 })];
+
+  it("redescend après un raid : population et villageois visibles baissent ensemble", () => {
+    const engine = new BuildEngine(longSteps, "English");
+    // 12 villageois + 5 lanciers + l'éclaireur.
+    feed(engine, panel({ food: 8, wood: 4 }, 0, 18), 0);
+    expect(feed(engine, panel({ food: 8, wood: 4 }, 0, 18), 2000).villagers).toBe(12);
+    // Raid : 4 villageois tués au bois.
+    expect(feed(engine, panel({ food: 8 }, 0, 14), 4000).villagers).toBe(8);
+    // Un lancier mort ne retire pas de villageois.
+    expect(feed(engine, panel({ food: 8 }, 0, 13), 6000).villagers).toBe(8);
+  });
+
+  it("n'ajoute pas l'armée faite en réaction sur une étape de villageois", () => {
+    const engine = new BuildEngine(longSteps, "English");
+    feed(engine, panel({ food: 9 }, 0, 10), 0);
+    // 2 lanciers contre un éclaireur adverse : la population monte, aucun villageois n'apparaît.
+    feed(engine, panel({ food: 9 }, 0, 11), 2000);
+    expect(feed(engine, panel({ food: 9 }, 0, 12), 4000).villagers).toBe(9);
+    // 40 s plus tard, un bâtisseur revient récolter : il ne confirme pas les lanciers oubliés.
+    feed(engine, panel({ food: 8 }, 0, 12), 10000);
+    expect(feed(engine, panel({ food: 9 }, 0, 12), 50000).villagers).toBe(9);
+  });
+
+  it("une population mal lue (18 au lieu de 16) ne crée pas de villageois fantôme", () => {
+    const engine = new BuildEngine(longSteps, "English");
+    feed(engine, panel({ food: 15 }, 0, 16), 0);
+    feed(engine, panel({ food: 15 }, 0, 18), 2000);
+    feed(engine, panel({ food: 15 }, 0, 16), 4000);
+    // La lecture corrigée annule la hausse fantôme : un vrai villageois ensuite compte pour un.
+    expect(feed(engine, panel({ food: 16 }, 0, 17), 6000).villagers).toBe(16);
+    expect(feed(engine, panel({ food: 16 }, 0, 17), 40000).villagers).toBe(16);
   });
 });
 
@@ -236,14 +276,15 @@ describe("BuildEngine", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(1);
     // Étape 2 : 6 nourriture + 3 bois = 9. Un 10e villageois, mais 9 à la nourriture et 1 au bois.
-    let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 4);
+    // 12 s pour envoyer ses villageois après le changement d'étape, puis 3 s d'écart qui dure.
+    let state = feed(engine, reading({ food: 9, wood: 1 }), 0, 16);
     expect(state.villagers).toBe(10);
     expect(state.index).toBe(1);
     // 3 de trop à la nourriture, mais il n'en manque que 2 au bois : « envoies-en 2 ».
     expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 2, excess: 3 });
     expect(state.drift).toBe(1);
     // Le joueur corrige : on avance.
-    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 5000);
+    state = feed(engine, reading({ food: 6, wood: 3, gold: 1 }), 20000);
     expect(state.index).toBe(2);
     // Décroché du BO (attaque, choix du joueur) : BoGo reste et propose ⌘⌥→ (drift).
     const lost = new BuildEngine(steps, "English");
@@ -259,18 +300,19 @@ describe("BuildEngine", () => {
     const engine = new BuildEngine(withBuilders, "English");
     expect(feed(engine, reading({ food: 7, wood: 4 }), 0, 5).misplacement).toBeNull();
     // Au-delà des bâtisseurs prévus, l'alerte revient.
-    expect(feed(engine, reading({ food: 9, wood: 8 }), 5000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3, excess: 3 });
+    expect(feed(engine, reading({ food: 9, wood: 8 }), 15000, 5).misplacement).toEqual({ from: "wood", to: "gold", count: 3, excess: 3 });
   });
 
   it("signale un villageois en trop sur une ressource s'il y reste", () => {
     const engine = new BuildEngine(steps, "English");
     engine.setStep(1);
     // Étape 2 : 6 nourriture, 3 bois. Le 8e part aux moutons au lieu du bois.
-    let state = feed(engine, reading({ food: 7, wood: 1 }), 0, 2);
+    // Pas d'alerte pendant les 12 s qui suivent le changement d'étape, ni avant 3 s d'écart.
+    let state = feed(engine, reading({ food: 7, wood: 1 }), 0, 13);
     expect(state.misplacement).toBeNull();
-    state = feed(engine, reading({ food: 7, wood: 1 }), 2000, 3);
+    state = feed(engine, reading({ food: 7, wood: 1 }), 13000, 3);
     expect(state.misplacement).toEqual({ from: "food", to: "wood", count: 1, excess: 1 });
-    state = feed(engine, reading({ food: 6, wood: 2 }), 5000, 1);
+    state = feed(engine, reading({ food: 6, wood: 2 }), 16000, 1);
     expect(state.misplacement).toBeNull();
   });
 });

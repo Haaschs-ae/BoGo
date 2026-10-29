@@ -26,7 +26,7 @@ import {
   type StepGoal,
 } from "./engine";
 import { parseHud, RESOURCES, type HudReading, type OcrToken, type Resource } from "./hud";
-import { ageUpBuilders } from "./top";
+import { LandmarkWatch } from "./top";
 import { looksEnglish, translateText } from "./translate";
 import {
   addBuild,
@@ -354,21 +354,16 @@ async function startVision(keepError = false) {
 let topText = "";
 /** Applis avec des fenêtres quand GeForce Now n'a pas été trouvé (pour comprendre pourquoi). */
 let visionApps: string[] = [];
-/** Un landmark en construction était visible à la lecture précédente du haut de l'écran. */
-let ageUpSeen = false;
-/** Ce landmark a déjà fait avancer le BO. */
-let ageUpHandled = false;
+/** Landmark en construction en haut de l'écran : un passage d'âge signalé une seule fois. */
+const landmark = new LandmarkWatch();
 /** Relances automatiques de la lecture de l'écran depuis la dernière lecture réussie. */
 let visionRestarts = 0;
 
 function onVision(event: VisionEvent) {
   if (event.type === "top") {
     topText = event.tokens.map((t) => t.text).join(" ");
-    const builders = ageUpBuilders(event.tokens);
-    // Deux lectures de suite (chiffre parasite), et une seule fois par landmark : il reste
-    // affiché toute la construction, il ne faut pas sauter jusqu'au passage d'âge suivant.
-    if (builders !== null && ageUpSeen && !ageUpHandled && engine) {
-      ageUpHandled = true;
+    // Deux lectures de suite, une seule fois par landmark (voir LandmarkWatch).
+    if (landmark.observe(event.tokens, Date.now()) && engine) {
       engine.ageUpStarted();
       if (!state.finished && engine.state().completed) {
         finishBuild();
@@ -381,8 +376,6 @@ function onVision(event: VisionEvent) {
         if (state.view === "play") render();
       }
     }
-    ageUpSeen = builders !== null;
-    if (builders === null) ageUpHandled = false;
     return;
   }
   if (event.type === "hud") {
@@ -410,9 +403,10 @@ function onVision(event: VisionEvent) {
   if (event.type === "clock") {
     if (clock.read(event.seconds, Date.now()) === null) return;
     const build = current();
-    // L'horloge ne pilote le BO que si le panneau des villageois n'est pas lu.
+    // L'horloge ne pilote le BO que si le panneau des villageois n'est pas lu, et ne fait
+    // jamais reculer : un joueur en avance sur les temps du guide le reste.
     const target = build && !hudIsFresh() ? stepForClock(build.build.build_order, event.seconds) : null;
-    if (target !== null && target !== state.autoStep) {
+    if (target !== null && target !== state.autoStep && target > state.step) {
       state.autoStep = target;
       state.step = target;
       engine?.setStep(target, "horloge du jeu");

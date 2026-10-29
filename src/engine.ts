@@ -123,9 +123,16 @@ export interface EngineState {
 
 const CONFIRM_READINGS = 2;
 const MISPLACEMENT_SECONDS = 3;
+/** Après un changement d'étape, le joueur a le temps d'envoyer ses villageois avant toute alerte. */
+const MISPLACEMENT_GRACE_SECONDS = 12;
 const SPEND_RATIO = 0.75;
 /** Le TC peut coûter moins cher après certaines technologies : seuil plus bas. */
 const TC_SPEND_RATIO = 0.6;
+/** Coût d'une seule ressource (TC mongol : 750 bois) : il faut presque tout le coût d'un coup,
+ *  sinon quelques maisons et fermes passeraient pour un TC. */
+const SINGLE_SPEND_RATIO = 0.9;
+/** Une hausse de population non confirmée par un villageois visible dans ce délai est de l'armée. */
+const PENDING_SECONDS = 30;
 /** Villageois manquants tolérés sur la répartition (en chemin, lecture) en plus des bâtisseurs. */
 /**
  * Une partie n'est pas lisse (attaque, villageois en plus) : BoGo avance prudemment. Chaque
@@ -146,8 +153,13 @@ export class BuildEngine {
   private villagers: number | null = null;
   private counted = new Confirmed();
   private population = new Confirmed();
-  /** Population et villageois comptés lors de la dernière hausse de population vue. */
-  private previous: { population: number; counted: number } | null = null;
+  private working = new Confirmed();
+  private idle = new Confirmed();
+  /** Population, villageois comptés, au travail et inactifs à la lecture confirmée précédente. */
+  private previous: { population: number; counted: number; working: number; idle: number } | null = null;
+  /** Hausses de population pas encore confirmées par un villageois visible (villageois en
+   *  chemin… ou armée, qui expire). */
+  private pending: { count: number; at: number }[] = [];
   /** Après un changement à la main, il faut dépasser ce nombre de villageois pour avancer. */
   private floor = 0;
   private history: { at: number; stock: Resources }[] = [];
@@ -186,7 +198,7 @@ export class BuildEngine {
   update(reading: HudReading, now: number): EngineState {
     this.last = reading;
     this.enteredAt ??= now;
-    this.estimateVillagers(reading);
+    this.estimateVillagers(reading, now);
     this.history = [...this.history.filter((h) => now - h.at <= 8000), { at: now, stock: reading.stock }];
 
     this.applySpending(now);
@@ -216,23 +228,65 @@ export class BuildEngine {
   /**
    * Le panneau ne montre pas tous les villageois : ceux qui construisent ou marchent
    * n'apparaissent nulle part, et un inactif reste compté sur sa dernière ressource.
-   * On part donc des villageois comptés, sans jamais redescendre (un bâtisseur reste un
-   * villageois), et chaque hausse de population compte comme un nouveau villageois, sauf
-   * si l'étape produit aussi de l'armée : alors seulement si un villageois de plus apparaît.
+   * On part des villageois comptés, sans redescendre quand l'un part construire. Une hausse de
+   * population ne devient un villageois que si un villageois de plus apparaît dans les 30 s,
+   * au travail ou inactif (sinon c'est de l'armée : lanciers faits en réaction, école
+   * militaire…). Quand la population et les villageois visibles baissent ensemble, des
+   * villageois sont morts (raid).
    */
-  private estimateVillagers(reading: HudReading) {
+  private estimateVillagers(reading: HudReading, now: number) {
     const counted = this.counted.read(reading.villagers);
     const population = this.population.read(reading.population);
-    if (counted === null || population === null) return;
+    // Comparés seulement une fois confirmés, comme les autres compteurs : sinon un même
+    // villageois serait vu deux fois (lecture brute, puis valeur confirmée).
+    const working = this.working.read(RESOURCES.reduce((sum, r) => sum + reading.gatherers[r], 0));
+    const idle = this.idle.read(reading.idle);
+    if (counted === null || population === null || working === null || idle === null) return;
 
     let estimate = this.villagers ?? counted;
-    if (this.previous && population > this.previous.population) {
-      const produced = population - this.previous.population;
-      const newlyCounted = Math.max(0, counted - this.previous.counted);
-      estimate += trainsNonVillagers(this.steps[this.index]) ? Math.min(produced, newlyCounted) : produced;
+    this.pending = this.pending.filter((p) => now - p.at <= PENDING_SECONDS * 1000);
+    if (this.previous) {
+      const grown = population - this.previous.population;
+      const visible = counted - this.previous.counted;
+      // Un nouveau villageois apparaît au travail, ou inactif au TC (moutons épuisés…).
+      const appeared = Math.max(visible, working - this.previous.working, idle - this.previous.idle);
+      if (grown > 0) this.pending.push({ count: grown, at: now });
+      if (appeared > 0) estimate += this.confirmPending(appeared);
+      if (grown < 0) {
+        // Villageois morts si les visibles baissent aussi ; le reste de la baisse (unité morte,
+        // population mal lue puis corrigée) annule d'abord les hausses encore en attente.
+        const deaths = visible < 0 ? Math.min(-grown, -visible) : 0;
+        estimate -= deaths;
+        this.cancelPending(-grown - deaths);
+      }
     }
-    if (!this.previous || population !== this.previous.population) this.previous = { population, counted };
+    this.previous = { population, counted, working, idle };
     this.villagers = Math.min(Math.max(estimate, counted), population);
+  }
+
+  /** Retire jusqu'à `n` hausses de population en attente, les plus récentes d'abord. */
+  private cancelPending(n: number) {
+    while (n > 0 && this.pending.length > 0) {
+      const last = this.pending[this.pending.length - 1];
+      const take = Math.min(n, last.count);
+      last.count -= take;
+      n -= take;
+      if (last.count === 0) this.pending.pop();
+    }
+  }
+
+  /** Confirme jusqu'à `n` hausses de population en attente ; renvoie combien l'ont été. */
+  private confirmPending(n: number): number {
+    let confirmed = 0;
+    while (n > 0 && this.pending.length > 0) {
+      const first = this.pending[0];
+      const take = Math.min(n, first.count);
+      first.count -= take;
+      n -= take;
+      confirmed += take;
+      if (first.count === 0) this.pending.shift();
+    }
+    return confirmed;
   }
 
   /** Une étape à la fois, après un temps minimum, si la cible et la répartition sont atteintes. */
@@ -298,8 +352,11 @@ export class BuildEngine {
     if (recent.length < 2 || older.length === 0) return;
     const drop = (r: Resource) =>
       Math.min(...older.map((h) => h.stock[r])) - Math.max(...recent.map((h) => h.stock[r]));
-    const paid = (cost: Cost, ratio: number) =>
-      Object.entries(cost).every(([r, n]) => drop(r as Resource) >= ratio * (n ?? 0));
+    const paid = (cost: Cost, ratio: number) => {
+      const parts = Object.entries(cost);
+      const needed = parts.length === 1 ? Math.max(ratio, SINGLE_SPEND_RATIO) : ratio;
+      return parts.every(([r, n]) => drop(r as Resource) >= needed * (n ?? 0));
+    };
 
     // Le joueur peut cliquer un peu avant l'étape prévue : on regarde un peu plus loin pour un
     // passage d'âge (dépense très reconnaissable), à peine pour un TC (palissades en urgence…).
@@ -328,7 +385,9 @@ export class BuildEngine {
     // Même règle que le bloc « Prochain villageois » : le premier déplacement prévu, plafonné à
     // ce qui manque à la destination ; les bâtisseurs prévus récoltent en attendant.
     const move = plannedMoves(this.steps[this.index].resources, reading.gatherers)[0];
-    if (!move) {
+    // Pas d'alerte juste après un changement d'étape : le temps d'envoyer les villageois.
+    const justEntered = now - (this.enteredAt ?? now) < MISPLACEMENT_GRACE_SECONDS * 1000;
+    if (!move || justEntered) {
       this.misplacedSince = null;
       return null;
     }

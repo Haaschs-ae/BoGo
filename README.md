@@ -165,6 +165,14 @@ npm run tauri dev         # lance l'appli en local (Rust + Node requis)
 
 La compilation de l'appli Mac est faite par GitHub Actions (`.github/workflows/build.yml`).
 
+Rejouer une partie enregistrée (réglage « Enregistrer mes parties », fichiers dans le dossier
+de données de BoGo, sous-dossier `parties`) : les lectures repassent dans le moteur, qui raconte
+ses changements d'étape, ses alertes et la fin du BO.
+
+```bash
+REPLAY=/chemin/vers/partie-1730190000.jsonl npx vitest run src/replay.test.ts --silent=false
+```
+
 ## Projets dont on s'inspire
 
 - [aoe4world/overlay](https://github.com/aoe4world/overlay) : détection de la partie via l'API AoE4World.
