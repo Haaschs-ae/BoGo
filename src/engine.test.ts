@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrderStep, StepResources } from "./buildOrder";
-import { BuildEngine, goalCosts, nextVillagerResources, stepGoal, villagerTarget } from "./engine";
+import { BuildEngine, goalCosts, nextVillagerResources, stepGoal, trainsNonVillagers, villagerTarget } from "./engine";
 import type { HudReading, Resources } from "./hud";
 
 function step(villagers: number, res: Partial<StepResources>, notes: string[] = [], age = 1): BuildOrderStep {
@@ -90,6 +90,51 @@ describe("analyse des étapes", () => {
     expect(state.affordable).toBe(true);
     state = feed(ayyubids, reading({ food: 7, wood: 3, gold: 3 }, { food: 30, gold: 10 }), 4000, 3);
     expect(state.index).toBe(3);
+  });
+});
+
+/** Lecture brute du panneau : compteurs par ressource, inactifs et population donnés à part. */
+function panel(gatherers: Partial<Resources>, idle: number, population: number): HudReading {
+  const g = { food: 0, wood: 0, gold: 0, stone: 0, ...gatherers };
+  const working = g.food + g.wood + g.gold + g.stone;
+  return { population, populationMax: 200, idle, stock: { food: 0, wood: 0, gold: 0, stone: 0 }, gatherers: g, villagers: Math.max(working, idle) };
+}
+
+describe("estimation des villageois", () => {
+  const longSteps = [step(20, { food: 20 })];
+
+  it("compte les villageois produits même s'ils ne sont sur aucune ressource (partie réelle à 6:21)", () => {
+    const engine = new BuildEngine(longSteps, "English");
+    // Début : 6 villageois inactifs + l'éclaireur.
+    expect(feed(engine, panel({}, 6, 7), 0).villagers).toBe(6);
+    // Les 3 suivants vont au bois.
+    feed(engine, panel({ food: 6, wood: 1 }, 0, 8), 2000);
+    feed(engine, panel({ food: 6, wood: 2 }, 0, 9), 4000);
+    feed(engine, panel({ food: 6, wood: 3 }, 0, 10), 6000);
+    // Moutons épuisés, 3 nouveaux villageois sans tâche : le panneau affiche 6 nourriture,
+    // 3 bois et 9 inactifs (les 6 sans moutons + les 3 nouveaux), soit 9 villageois visibles.
+    feed(engine, panel({ food: 6, wood: 3 }, 7, 11), 8000);
+    feed(engine, panel({ food: 6, wood: 3 }, 8, 12), 10000);
+    expect(feed(engine, panel({ food: 6, wood: 3 }, 9, 13), 12000).villagers).toBe(12);
+  });
+
+  it("garde un villageois parti construire", () => {
+    const engine = new BuildEngine(longSteps, "English");
+    feed(engine, panel({ food: 9, wood: 3 }, 0, 13), 0);
+    expect(feed(engine, panel({ food: 9 }, 0, 13), 2000).villagers).toBe(12);
+  });
+
+  it("ne prend pas une unité militaire pour un villageois", () => {
+    const military = [step(20, { food: 12 }, ["2 @unit_infantry/spearman-1.webp@ depuis la caserne"])];
+    expect(trainsNonVillagers(military[0])).toBe(true);
+    expect(trainsNonVillagers(step(6, {}, ["6 @unit_worker/villager.webp@"]))).toBe(false);
+
+    const engine = new BuildEngine(military, "English");
+    feed(engine, panel({ food: 12 }, 0, 13), 0);
+    // Un lancier sort : la population monte, mais aucun villageois de plus.
+    expect(feed(engine, panel({ food: 12 }, 0, 14), 2000).villagers).toBe(12);
+    // Un villageois sort et va récolter : on le compte.
+    expect(feed(engine, panel({ food: 13 }, 0, 15), 4000).villagers).toBe(13);
   });
 });
 

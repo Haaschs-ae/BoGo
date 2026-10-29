@@ -25,6 +25,11 @@ const LANDMARK_NOTE = /landmark_|age\/age_|age up|aging|passe[rz]? (l'|à l')?[�
 const TC_IMAGE = /town-?center\.webp/i;
 const TC_BUILD = /build|constru|2nd|second|deuxi|new|nouveau|another|autre|\+ ?1/i;
 
+/** L'étape fait produire autre chose que des villageois (icône d'unité dans les consignes). */
+export function trainsNonVillagers(step: BuildOrderStep): boolean {
+  return step.notes.some((note) => /@unit_(?!worker\/)[^@]*@/.test(note));
+}
+
 /** Villageois visés à la fin de l'étape ; -1 dans le BO : somme de la répartition. */
 export function villagerTarget(step: BuildOrderStep): number {
   if (step.villager_count >= 0) return step.villager_count;
@@ -111,8 +116,12 @@ const FALLBACK_EXTRA_VILLAGERS = 4;
 
 export class BuildEngine {
   index = 0;
+  /** Villageois estimés (voir estimateVillagers). */
   private villagers: number | null = null;
-  private candidate: { value: number; seen: number } | null = null;
+  private counted = new Confirmed();
+  private population = new Confirmed();
+  /** Population et villageois comptés lors de la dernière hausse de population vue. */
+  private previous: { population: number; counted: number } | null = null;
   /** Après un changement à la main, il faut dépasser ce nombre de villageois pour avancer. */
   private floor = 0;
   private history: { at: number; stock: Resources }[] = [];
@@ -132,7 +141,7 @@ export class BuildEngine {
 
   update(reading: HudReading, now: number): EngineState {
     this.last = reading;
-    this.confirmVillagers(reading.villagers);
+    this.estimateVillagers(reading);
     this.history = [...this.history.filter((h) => now - h.at <= 8000), { at: now, stock: reading.stock }];
 
     this.applySpending(now);
@@ -156,11 +165,26 @@ export class BuildEngine {
     };
   }
 
-  private confirmVillagers(value: number) {
-    // Une valeur n'est retenue qu'après deux lectures identiques (chiffre mal lu, villageois en chemin).
-    if (this.candidate?.value === value) this.candidate.seen++;
-    else this.candidate = { value, seen: 1 };
-    if (this.candidate.seen >= CONFIRM_READINGS) this.villagers = value;
+  /**
+   * Le panneau ne montre pas tous les villageois : ceux qui construisent ou marchent
+   * n'apparaissent nulle part, et un inactif reste compté sur sa dernière ressource.
+   * On part donc des villageois comptés, sans jamais redescendre (un bâtisseur reste un
+   * villageois), et chaque hausse de population compte comme un nouveau villageois, sauf
+   * si l'étape produit aussi de l'armée : alors seulement si un villageois de plus apparaît.
+   */
+  private estimateVillagers(reading: HudReading) {
+    const counted = this.counted.read(reading.villagers);
+    const population = this.population.read(reading.population);
+    if (counted === null || population === null) return;
+
+    let estimate = this.villagers ?? counted;
+    if (this.previous && population > this.previous.population) {
+      const produced = population - this.previous.population;
+      const newlyCounted = Math.max(0, counted - this.previous.counted);
+      estimate += trainsNonVillagers(this.steps[this.index]) ? Math.min(produced, newlyCounted) : produced;
+    }
+    if (!this.previous || population !== this.previous.population) this.previous = { population, counted };
+    this.villagers = Math.min(Math.max(estimate, counted), population);
   }
 
   private advanceOnVillagers() {
@@ -229,4 +253,17 @@ export class BuildEngine {
 
 function largest(cost: Cost): [Resource, number] {
   return (Object.entries(cost) as [Resource, number][]).sort((a, b) => b[1] - a[1])[0];
+}
+
+/** Valeur retenue seulement après deux lectures identiques de suite (chiffre mal lu). */
+class Confirmed {
+  private candidate: { value: number; seen: number } | null = null;
+  private value: number | null = null;
+
+  read(value: number): number | null {
+    if (this.candidate?.value === value) this.candidate.seen++;
+    else this.candidate = { value, seen: 1 };
+    if (this.candidate.seen >= CONFIRM_READINGS) this.value = value;
+    return this.value;
+  }
 }

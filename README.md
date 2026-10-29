@@ -69,8 +69,11 @@ BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Le bouton ✕
     Confidentialité et sécurité → Enregistrement de l'écran**, puis de relancer BoGo.
     Les réglages (⚙) montrent ce que BoGo lit à l'écran, et permettent de couper la
     lecture.
-  - Les villageois qui construisent ne sont pas comptés dans le panneau du jeu : pendant
-    une construction, le BO peut attendre un peu avant d'avancer.
+  - Le panneau du jeu ne montre pas les villageois qui construisent ou marchent, et un
+    inactif y reste compté sur sa dernière ressource. BoGo estime donc les villageois :
+    il ne redescend jamais (un bâtisseur reste un villageois) et compte chaque hausse de
+    population comme un nouveau villageois, sauf sur les étapes qui produisent de l'armée
+    (icône d'unité dans les consignes), où il attend de voir le villageois au travail.
 
 | Raccourci | Action |
 |-----------|--------|
