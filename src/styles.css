@@ -335,7 +335,22 @@ main.play {
   font-size: 30px;
   font-weight: 800;
   line-height: 1.05;
-  overflow-wrap: anywhere;
+  /* Jamais coupé au milieu d'un mot : la taille baisse avec la longueur (voir bigWord). */
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
+}
+
+.big.long {
+  font-size: 25px;
+}
+
+.big.longer {
+  font-size: 21px;
+}
+
+.big.longest {
+  font-size: 18px;
 }
 
 .sub {

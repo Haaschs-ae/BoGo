@@ -1227,12 +1227,19 @@ function heroBlock(steps: BuildOrderStep[], hud: HudReading | null, villagers: n
     hero.resource ? `tile ${hero.resource}` : "tile goal-tile",
     hero.icon ? gameIcon(hero.icon, fallback) : fallback,
   );
-  const text = h("div", "hero-text", h("div", "big", hero.word));
+  const text = h("div", "hero-text", bigWord(hero.word));
   if (hero.detail) text.append(h("div", "sub", hero.detail));
   if (hero.dropOff) {
     text.append(h("div", "sub", "il construit un ", gameIcon(hero.dropOff.path, ""), ` ${hero.dropOff.label}`));
   }
   return h("div", "primary", h("div", "kicker", "PROCHAIN VILLAGEOIS"), h("div", "action", tile, text));
+}
+
+/** Le mot en grand, jamais coupé en deux : plus il est long, plus il est petit (« NOURRITURE »). */
+function bigWord(word: string): HTMLElement {
+  const longest = Math.max(...word.split(" ").map((w) => w.length));
+  const size = longest <= 7 ? "" : longest <= 10 ? " long" : longest <= 12 ? " longer" : " longest";
+  return h("div", `big${size}`, word);
 }
 
 /** Passage d'âge ou TC à poser : vert et « clique ! » dès qu'on a de quoi payer. */
@@ -1247,7 +1254,7 @@ function goalBlock(
   const isAge = goal.kind === "age";
   const age = goal.kind === "age" ? goal.age : 0;
   const tile = h("div", "tile goal-tile", gameIcon(isAge ? `age/age_${age}.webp` : TC_ICON, isAge ? "⬆" : "🏰"));
-  const text = h("div", "hero-text", h("div", "big", isAge ? `ÂGE ${ROMAN[age] ?? age}` : "NOUVEAU TC"));
+  const text = h("div", "hero-text", bigWord(isAge ? `ÂGE ${ROMAN[age] ?? age}` : "NOUVEAU TC"));
   const landmark = isAge ? stepLandmark(step) : null;
   const sub = h("div", "sub", isAge ? (AGE_NAMES[age] ?? "").replace(/^[IV]+ · /, "") : "Town Center");
   if (landmark) {
