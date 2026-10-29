@@ -37,6 +37,15 @@ export function villagerTarget(step: BuildOrderStep): number {
   return [r.food, r.wood, r.gold, r.stone, r.builder ?? 0].reduce((sum, n) => sum + Math.max(0, n), 0);
 }
 
+/**
+ * Cible de villageois de chaque étape, jamais inférieure à celle des étapes précédentes :
+ * une étape à -1 ou plus basse (simple construction…) garde la cible d'avant, comme RTS_Overlay.
+ */
+export function effectiveVillagerTargets(steps: BuildOrderStep[]): number[] {
+  let max = 0;
+  return steps.map((step) => (max = Math.max(max, villagerTarget(step))));
+}
+
 export function stepGoal(steps: BuildOrderStep[], index: number): StepGoal {
   const transition = ageTransitionAt(steps, index);
   if (transition) return { kind: "age", age: transition };
@@ -116,6 +125,9 @@ const FALLBACK_EXTRA_VILLAGERS = 4;
 
 export class BuildEngine {
   index = 0;
+  /** Pourquoi le BO a changé d'étape, du plus récent au plus ancien (affiché dans les réglages). */
+  log: string[] = [];
+  private readonly targets: number[];
   /** Villageois estimés (voir estimateVillagers). */
   private villagers: number | null = null;
   private counted = new Confirmed();
@@ -131,12 +143,20 @@ export class BuildEngine {
   constructor(
     private readonly steps: BuildOrderStep[],
     private readonly civilization: string,
-  ) {}
+  ) {
+    this.targets = effectiveVillagerTargets(steps);
+  }
 
   /** Changement d'étape au clavier : respecté jusqu'au prochain nouveau villageois. */
-  setStep(index: number) {
-    this.index = Math.max(0, Math.min(index, this.steps.length - 1));
+  setStep(index: number, reason = "clavier") {
+    const target = Math.max(0, Math.min(index, this.steps.length - 1));
+    if (target !== this.index) this.record(target, reason);
+    this.index = target;
     this.floor = this.villagers ?? 0;
+  }
+
+  private record(to: number, reason: string) {
+    this.log = [`Étape ${this.index + 1} → ${to + 1} : ${reason}`, ...this.log].slice(0, 8);
   }
 
   update(reading: HudReading, now: number): EngineState {
@@ -190,12 +210,21 @@ export class BuildEngine {
   private advanceOnVillagers() {
     const v = this.villagers;
     if (v === null || v <= this.floor) return;
+    const start = this.index;
+    let reason = "";
     while (this.index < this.steps.length - 1) {
       const goal = stepGoal(this.steps, this.index);
-      const target = villagerTarget(this.steps[this.index]);
+      const target = this.targets[this.index];
       const needed = goal.kind === "villagers" ? target : target + FALLBACK_EXTRA_VILLAGERS;
       if (v <= needed) break;
+      reason ||= goal.kind === "villagers" ? `${v} villageois > ${target}` : `${v} villageois, clic non vu`;
       this.index++;
+    }
+    if (this.index !== start) {
+      const end = this.index;
+      this.index = start;
+      this.record(end, reason);
+      this.index = end;
     }
   }
 
@@ -219,7 +248,9 @@ export class BuildEngine {
           ? options.some((cost) => paid(Object.fromEntries([largest(cost)]), TC_SPEND_RATIO))
           : options.some((cost) => paid(cost, SPEND_RATIO));
       if (done) {
-        this.index = Math.min(i + 1, this.steps.length - 1);
+        const to = Math.min(i + 1, this.steps.length - 1);
+        this.record(to, goal.kind === "tc" ? "TC payé" : "passage d'âge payé");
+        this.index = to;
         this.floor = 0;
         this.history = [];
         return;

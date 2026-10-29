@@ -488,3 +488,11 @@ button.wide {
   height: 1.2em;
   margin: 0 1px;
 }
+
+.step-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}

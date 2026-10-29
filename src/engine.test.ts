@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrderStep, StepResources } from "./buildOrder";
-import { BuildEngine, goalCosts, nextVillagerResources, stepGoal, trainsNonVillagers, villagerTarget } from "./engine";
+import { BuildEngine, effectiveVillagerTargets, goalCosts, nextVillagerResources, stepGoal, trainsNonVillagers, villagerTarget } from "./engine";
 import type { HudReading, Resources } from "./hud";
 
 function step(villagers: number, res: Partial<StepResources>, notes: string[] = [], age = 1): BuildOrderStep {
@@ -139,6 +139,22 @@ describe("estimation des villageois", () => {
 });
 
 describe("BuildEngine", () => {
+  it("ne saute pas les étapes sans cible de villageois (-1 ou plus basse) : bug vu en partie", () => {
+    const withGaps = [
+      step(6, { food: 6 }),
+      step(-1, { food: -1, wood: -1, gold: -1, stone: -1 }, ["Construis une maison"]),
+      step(9, { food: 6, wood: 3 }),
+      step(4, { food: 4 }, ["Étape mal remplie"]),
+      step(12, { food: 6, wood: 3, gold: 3 }),
+    ];
+    expect(effectiveVillagerTargets(withGaps)).toEqual([6, 6, 9, 9, 12]);
+    const engine = new BuildEngine(withGaps, "English");
+    expect(feed(engine, reading({ food: 6 }), 0).index).toBe(0);
+    // Le 7e villageois passe l'étape 1 et l'étape « maison » (même cible), pas plus.
+    expect(feed(engine, reading({ food: 6, wood: 1 }), 2000).index).toBe(2);
+    expect(engine.log[0]).toBe("Étape 1 → 3 : 7 villageois > 6");
+  });
+
   it("passe à l'étape suivante quand le 7e villageois apparaît", () => {
     const engine = new BuildEngine(steps, "English");
     expect(feed(engine, reading({ food: 6 }), 0).index).toBe(0);
