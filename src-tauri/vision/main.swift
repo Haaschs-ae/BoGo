@@ -59,16 +59,23 @@ func parseClock(_ token: String) -> Int? {
     return values.reduce(0) { $0 * 60 + $1 }
 }
 
+/// Applis qui ont des fenêtres, envoyées avec « no_window » pour comprendre une recherche ratée.
+var visibleApps: [String] = []
+
 func findGeForceNowWindow() async throws -> SCWindow? {
-    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+    // Toutes les fenêtres, pas seulement celles à l'écran : GeForce Now en plein écran
+    // est sur son propre bureau, invisible quand on regarde un autre bureau.
+    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+    visibleApps = Array(Set(content.windows.compactMap { $0.owningApplication?.applicationName })).sorted()
     return content.windows
         .filter { window in
             let app = window.owningApplication
             let name = (app?.applicationName ?? "").lowercased()
             let bundle = (app?.bundleIdentifier ?? "").lowercased()
-            return name.contains("geforce") || bundle.contains("nvidia")
+            return (name.contains("geforce") || bundle.contains("nvidia")) && window.frame.width > 200
         }
-        .max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+        // La fenêtre à l'écran d'abord, puis la plus grande.
+        .max { ($0.isOnScreen ? 1 : 0, $0.frame.width * $0.frame.height) < ($1.isOnScreen ? 1 : 0, $1.frame.width * $1.frame.height) }
 }
 
 func capture(_ window: SCWindow) async throws -> CGImage {
@@ -142,8 +149,9 @@ func run() async {
                     emitStatus("no_clock")
                 }
                 emit(["type": "hud", "tokens": tokens(recognizeText(in: image, area: hudArea))])
-            } else {
-                emitStatus("no_window")
+            } else if lastStatus != "no_window" {
+                lastStatus = "no_window"
+                emit(["type": "status", "code": "no_window", "apps": visibleApps])
             }
         } catch {
             delay = 3_000_000_000

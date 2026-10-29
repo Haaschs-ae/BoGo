@@ -62,7 +62,7 @@ type VisionEvent =
   | { type: "clock"; seconds: number; text: string }
   | { type: "hud"; tokens: OcrToken[] }
   | { type: "top"; tokens: OcrToken[] }
-  | { type: "status"; code: "ok" | "no_window" | "no_clock" }
+  | { type: "status"; code: "ok" | "no_window" | "no_clock"; apps?: string[] }
   | { type: "error"; code: string; message: string }
   | { type: "stopped"; status?: string; detail?: string };
 
@@ -137,9 +137,12 @@ render();
 registerHotkeys();
 pollGame();
 setInterval(pollGame, POLL_SECONDS * 1000);
-listen<VisionEvent>("vision", (event) => onVision(event.payload));
 listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
-if (state.settings.readScreen) startVision();
+// La lecture de l'écran ne démarre qu'une fois l'écoute en place : sinon une erreur
+// immédiate (autorisation manquante) serait perdue.
+listen<VisionEvent>("vision", (event) => onVision(event.payload)).then(() => {
+  if (state.settings.readScreen) startVision();
+});
 // macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
 setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
 
@@ -295,6 +298,8 @@ async function startVision(keepError = false) {
 
 /** Texte lu en haut au centre (âge, passage d'âge en cours), affiché dans les réglages. */
 let topText = "";
+/** Applis avec des fenêtres quand GeForce Now n'a pas été trouvé (pour comprendre pourquoi). */
+let visionApps: string[] = [];
 /** Relances automatiques de la lecture de l'écran depuis la dernière lecture réussie. */
 let visionRestarts = 0;
 
@@ -337,7 +342,10 @@ function onVision(event: VisionEvent) {
     return;
   }
   if (event.type === "error") state.vision.error = event.message;
-  else if (event.type === "status") state.vision = { status: event.code, error: null };
+  else if (event.type === "status") {
+    state.vision = { status: event.code, error: null };
+    visionApps = event.apps ?? [];
+  }
   else {
     // Arrêt inattendu : on garde la raison, puis on relance (3 fois au plus d'affilée).
     state.vision.status = "stopped";
@@ -699,7 +707,9 @@ function visionText(): string {
   }
   if (topText) parts.push(`en haut : « ${topText} »`);
   if (parts.length) return `Lu à l'écran : ${parts.join(" · ")}.`;
-  return VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
+  const status = VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
+  if (state.vision.status === "no_window" && visionApps.length) return `${status} Applis vues : ${visionApps.join(", ")}.`;
+  return status;
 }
 
 function gameStatus(): HTMLElement {
