@@ -37,8 +37,8 @@ pastille réponde aux clics.
 
 ### Windows (expérimental)
 
-La même appli existe pour Windows, construite depuis le même code : télécharge **BoGo-windows**
-(installateur `BoGo_X.Y.Z_x64-setup.exe`) sur la même page Releases. Tant que BoGo n'est pas signé, Windows
+La même appli existe pour Windows, construite depuis le même code : télécharge l'installateur Windows
+(`BoGo_X.Y.Z_x64-setup.exe`) sur la même page Releases. Tant que BoGo n'est pas signé, Windows
 SmartScreen affiche « Windows a protégé votre ordinateur » : « Informations complémentaires »,
 puis « Exécuter quand même ». Pour l'instant, sous Windows :
 
