@@ -334,6 +334,13 @@ fn quit(app: AppHandle, vision: State<Vision>) {
     app.exit(0);
 }
 
+/// Relance BoGo après une mise à jour installée (la lecture de l'écran est arrêtée avant).
+#[tauri::command]
+fn restart(app: AppHandle, vision: State<Vision>) {
+    stop_vision(vision);
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -341,6 +348,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_nspanel::init());
     builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Vision::default())
         .manage(Recorder::default())
         .invoke_handler(tauri::generate_handler![
@@ -355,7 +363,8 @@ pub fn run() {
             journal_read,
             journal_write,
             translate_texts,
-            quit
+            quit,
+            restart
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

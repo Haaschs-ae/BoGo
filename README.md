@@ -25,6 +25,11 @@ modes, coach contre l'IA, réglages, fair-play).
    xattr -cr /Applications/BoGo.app
    ```
 
+**Mises à jour** : à installer à la main une seule fois. Ensuite BoGo se met à jour tout seul :
+une bannière « BoGo X.Y est disponible → Mettre à jour » apparaît hors partie, un clic installe
+et relance (BO, matchups et réglages gardés ; l'autorisation d'enregistrer l'écran aussi). Les
+versions publiées sont sur la page **Releases** du dépôt ([publier](docs/publier.md)).
+
 BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Pour le fermer, ✕ puis
 « Quitter ? » (partout : en partie, dans la bibliothèque, sur la pastille « BO terminé ») ; pour
 seulement le masquer, Ctrl+Alt+B (ou ton raccourci). À la fin du BO, BoGo se déverrouille pour que la
@@ -288,10 +293,11 @@ publie une règle, elle s'applique et BoGo s'y alignera.
 
 ## Données et confidentialité
 
-- BoGo contacte trois sites : aoe4world.com (ta partie en cours, avec ton identifiant de profil et,
-  si tu l'as saisie, ta clé API), aoe4guides.com (les BO que tu importes) et rts-overlay.github.io
-  (les icônes du jeu, hébergées sur GitHub, qui journalise les adresses IP). Aucun serveur BoGo,
-  aucune télémétrie.
+- BoGo contacte quatre sites : aoe4world.com (ta partie en cours, avec ton identifiant de profil et,
+  si tu l'as saisie, ta clé API), aoe4guides.com (les BO que tu importes), rts-overlay.github.io
+  (les icônes du jeu, hébergées sur GitHub, qui journalise les adresses IP) et github.com (la
+  recherche de mise à jour, sans rien envoyer d'autre que la requête). Aucun serveur BoGo, aucune
+  télémétrie.
 - Ta clé API et ta bibliothèque sont stockées sur ta machine seulement. Ne partage jamais de capture
   des réglages ⚙ sans masquer la clé.
 - Le **journal des parties** (civ, mode, carte, BO lancés et gardés ; ni nom ni identifiant

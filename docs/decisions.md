@@ -73,3 +73,13 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   plutôt que l'emplacement compact en pictogrammes de la maquette v3.
 - **2026-10-29 · En partie, BoGo se verrouille (clics vers le jeu) au lancement d'un BO ; ✕ masque
   au lieu de quitter ; quitter demande un second clic.**
+- **2026-10-30 · Mise à jour automatique** (plugin updater de Tauri) : `latest.json` sur les
+  versions publiées GitHub, signé par une clé dont seule la partie publique est dans le dépôt.
+  Recherche au lancement puis toutes les 6 h, jamais en partie ; bannière avec bouton, pas
+  d'installation sans clic. Publication = changer le numéro de version et pousser (job publish).
+  Mac signé avec un certificat auto-signé stable (secret) au lieu de la signature ad hoc :
+  l'autorisation d'enregistrer l'écran survit aux mises à jour. Pas de « hardened runtime »
+  (inutile sans notarisation).
+- **2026-10-30 · Panneau du jeu : rien plutôt qu'une lecture décalée.** Les quatre lignes de
+  ressources doivent être régulièrement espacées et suivre la population de près ; sinon pas de
+  lecture (vu en partie : villageois attribués aux mauvaises ressources).

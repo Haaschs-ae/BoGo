@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { extractBuildId, fetchBuild } from "./aoe4guides";
 import { extractProfileId, fetchLastGame, kindLabel, soloOpponent, type DetectedGame } from "./aoe4world";
 import {
@@ -45,6 +47,7 @@ import {
 import { looksEnglish, translateLine } from "./translate";
 import { cachedLine, loadTranslations, missingTexts, saveTranslations } from "./translations";
 import { adviseBuild, categoryPicks, COUNTDOWN_SECONDS, distributionMismatch, type Advice } from "./advice";
+import { FIRST_CHECK_DELAY_MS, shortNotes, updateDue, type UpdateState } from "./update";
 import { newEntry, parseJournal, serializeJournal, type GameEntry, type LaunchHow } from "./journal";
 import {
   forgetBuild,
@@ -668,6 +671,113 @@ const translations = loadTranslations(localStorage);
 /** La traduction de macOS a répondu (« ok »), ou n'existe pas ici (dictionnaire seulement). */
 let macTranslation: "unknown" | "ok" | "unavailable" = "unknown";
 let translating = false;
+
+// ---------- Mise à jour de BoGo ----------
+
+let appVersion = "";
+let update: UpdateState | null = null;
+let pendingUpdate: Update | null = null;
+let lastUpdateCheck: number | null = null;
+let updateDismissed = false;
+/** Résultat de la dernière recherche lancée à la main depuis ⚙. */
+let updateCheckMessage = "";
+
+function playingNow(): boolean {
+  return !!state.game?.ongoing || clock.current(Date.now()) !== null || state.view === "play" || state.view === "choice";
+}
+
+/** Cherche une nouvelle version (`manual` : depuis ⚙, même en partie, avec un message). */
+async function checkForUpdate(manual = false) {
+  if (!manual && !updateDue(lastUpdateCheck, Date.now(), playingNow())) return;
+  if (update && update.status !== "available" && update.status !== "error") return;
+  lastUpdateCheck = Date.now();
+  try {
+    const found = await check();
+    if (found) {
+      pendingUpdate = found;
+      update = { version: found.version, notes: shortNotes(found.body), status: "available", progress: null, error: null };
+      updateDismissed = false;
+      updateCheckMessage = "";
+    } else {
+      updateCheckMessage = manual ? "BoGo est à jour." : "";
+    }
+  } catch (err) {
+    // Hors ligne ou pas encore de version publiée : on réessaiera plus tard, sans déranger.
+    updateCheckMessage = manual ? `Recherche impossible pour l'instant (${errorText(err)}).` : "";
+  }
+  if (state.view !== "play" && state.view !== "choice") render();
+}
+
+async function installUpdate() {
+  if (!pendingUpdate || !update) return;
+  const shown = update;
+  shown.status = "downloading";
+  shown.error = null;
+  render();
+  let total = 0;
+  let received = 0;
+  try {
+    await pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === "Started") total = event.data.contentLength ?? 0;
+      if (event.event === "Progress") {
+        received += event.data.chunkLength;
+        const progress = total ? Math.min(1, received / total) : null;
+        // On ne redessine qu'au pourcent près.
+        if (progress === null || shown.progress === null || Math.floor(progress * 100) !== Math.floor(shown.progress * 100)) {
+          shown.progress = progress;
+          render();
+        }
+      }
+    });
+    shown.status = "ready";
+    render();
+    // Sous Windows, l'installateur ferme BoGo lui-même ; sur Mac, on relance.
+    await invoke("restart");
+  } catch (err) {
+    shown.status = "error";
+    shown.error = errorText(err);
+    render();
+  }
+}
+
+/** Bannière « nouvelle version », hors partie seulement. */
+function updateCard(): HTMLElement | "" {
+  if (!update || (updateDismissed && update.status === "available")) return "";
+  const card = h("div", "news update");
+  card.append(h("strong", "", `BoGo ${update.version} est disponible`));
+  if (update.notes) card.append(h("p", "update-notes", update.notes));
+  if (update.status === "downloading") {
+    const pct = update.progress === null ? "" : ` ${Math.round(update.progress * 100)} %`;
+    card.append(h("p", "", `Téléchargement…${pct} BoGo se relancera tout seul.`));
+  } else if (update.status === "ready") {
+    card.append(h("p", "", "Installée : BoGo se relance…"));
+  } else {
+    if (update.error) card.append(h("p", "status error", `La mise à jour a échoué (${update.error}). Réessaie, ou télécharge BoGo à nouveau.`));
+    const later = button("Plus tard", "Masquer pour l'instant (BoGo le reproposera plus tard)", () => {
+      updateDismissed = true;
+      render();
+    });
+    const go = button("Mettre à jour", "Télécharger, installer et relancer BoGo (tes BO et réglages sont gardés)", () => void installUpdate());
+    go.className = "primary";
+    card.append(h("p", "", "Tes BO, matchups et réglages sont gardés."), h("div", "row", go, later));
+  }
+  return card;
+}
+
+/** Version installée et recherche à la main, dans ⚙. */
+function versionSettings(): HTMLElement {
+  const again = button("Rechercher une mise à jour", "Chercher tout de suite une nouvelle version de BoGo", () => {
+    updateCheckMessage = "Recherche…";
+    render();
+    void checkForUpdate(true);
+  });
+  return h(
+    "div",
+    "version",
+    h("p", "hint", `BoGo ${appVersion || "…"} · se met à jour tout seul : une bannière te le propose quand une nouvelle version sort.`),
+    h("div", "row", again, h("span", "hint", updateCheckMessage)),
+  );
+}
 
 /**
  * Fait traduire par macOS les consignes anglaises de ces BO, une fois, hors partie : la petite
@@ -1521,7 +1631,7 @@ function newsCard(): HTMLElement | "" {
 
 function civsView(): HTMLElement {
   const view = h("main", "civs");
-  view.append(newsCard());
+  view.append(updateCard(), newsCard());
   if (state.game?.ongoing) view.append(gameBanner(state.game));
 
   const grid = h("div", "civ-grid");
@@ -1540,7 +1650,7 @@ function civsView(): HTMLElement {
 function civView(): HTMLElement {
   const civ = state.civ;
   const view = h("main", "civ");
-  view.append(newsCard());
+  view.append(updateCard(), newsCard());
   const back = button("←", "Toutes les civilisations", () => showLibrary(""));
   const rules = state.matchups.rules.filter((r) => r.civ === civ).length;
   const matchups = button(rules ? `🎯 Matchups (${rules})` : "🎯 Matchups", `BO de base et règles contre une civ ou sur une carte, pour ${civ}`, () => showMatchups());
@@ -2114,6 +2224,8 @@ function settingsView(): HTMLElement {
     save,
     message,
     h("p", "hint", hotkeyHint()),
+    updateCard(),
+    versionSettings(),
   );
   if (state.gameError) {
     message.className = "status error";
@@ -2167,6 +2279,10 @@ if (state.settings.scale !== 100) applyScale();
 const hotkeysReady = registerHotkeys().then(render);
 pollGame();
 setInterval(pollGame, POLL_SECONDS * 1000);
+getVersion().then((v) => (appVersion = v)).catch(() => {});
+// Mise à jour : une recherche peu après le lancement, puis régulièrement (jamais en partie).
+setTimeout(() => void checkForUpdate(), FIRST_CHECK_DELAY_MS);
+setInterval(() => void checkForUpdate(), 10 * 60 * 1000);
 listen<{ id: string; style: Style }>("import-request", (event) => importFromGuides(event.payload.id, event.payload.style));
 // La lecture de l'écran ne démarre qu'une fois l'écoute en place : sinon une erreur
 // immédiate (autorisation manquante) serait perdue.

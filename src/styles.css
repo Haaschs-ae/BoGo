@@ -1248,3 +1248,16 @@ main.matchups .field {
   padding: 0 6px;
   font-size: 11px;
 }
+
+.update .row,
+.version .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.update-notes {
+  white-space: pre-line;
+  color: var(--muted, #b9b9b9);
+}
