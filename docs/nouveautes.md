@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.2.2
+
+- Drapeaux des Vikings et des Écossais.
+
 ## 0.2.1
 
 - Villageois par ressource bien mieux lus : les petits chiffres du panneau étaient ignorés par la lecture de l'écran.
