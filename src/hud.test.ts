@@ -62,6 +62,38 @@ describe("parseHud", () => {
     });
   });
 
+  it("ne lit jamais les ressources décalées sous la mauvaise fraction (capture du joueur, 0:53)", () => {
+    // « 8/10 » et « 0/7 » au-dessus de la population « 9/10 » en orange, idle 0 grisé.
+    const hud = (pop: OcrToken | null) =>
+      [
+        token("0", 62, 750, 80, 768),
+        token("8/10", 42, 800, 78, 820),
+        token("0/7", 152, 800, 180, 820),
+        pop,
+        token("0", 146, 858, 157, 878),
+        token("124", 42, 916, 72, 936),
+        token("6", 146, 914, 157, 934),
+        token("150", 42, 955, 72, 975),
+        token("1", 146, 953, 155, 973),
+        token("100", 42, 994, 72, 1014),
+        token("0", 146, 992, 157, 1012),
+        token("0", 42, 1033, 52, 1053),
+        token("0", 146, 1031, 157, 1051),
+      ].filter((t): t is OcrToken => t !== null);
+    expect(parseHud(hud(token("9/10", 42, 858, 78, 878)))).toEqual({
+      population: 9,
+      populationMax: 10,
+      idle: 0,
+      stock: { food: 124, wood: 150, gold: 100, stone: 0 },
+      gatherers: { food: 6, wood: 1, gold: 0, stone: 0 },
+      villagers: 7,
+    });
+    // Population orange mal lue ou pas lue : rien plutôt qu'une lecture décalée sous « 8/10 ».
+    expect(parseHud(hud(token("g/10", 42, 858, 78, 878)))).toBeNull();
+    expect(parseHud(hud(token("合 9/10", 20, 858, 78, 878)))).toBeNull();
+    expect(parseHud(hud(null))).toBeNull();
+  });
+
   it("compte 0 pour les compteurs grisés que la reconnaissance n'a pas lus", () => {
     const grayZerosMissing = startOfGame.filter((t, i) => !(t.text === "0" && t.x > 0.4) || i === 0);
     const reading = parseHud(grayZerosMissing);

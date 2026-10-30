@@ -73,6 +73,15 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   }
   if (rows.length < RESOURCES.length) return null;
 
+  // Les quatre lignes de ressources sont régulièrement espacées et suivent de près la
+  // population. Une ligne de plus en tête (celle de la vraie population, mal lue, sous une
+  // autre fraction « 8/10 ») décale tout d'une ressource : mieux vaut ne rien lire.
+  const centers = rows.slice(0, RESOURCES.length).map((row) => row[0].cy);
+  const gaps = centers.slice(1).map((cy, i) => cy - centers[i]);
+  const spacing = Math.min(...gaps);
+  if (Math.max(...gaps) > spacing * 1.25) return null;
+  if (centers[0] - popCy > spacing * 2.2) return null;
+
   const stock = {} as Resources;
   const gatherers = {} as Resources;
   for (const [i, resource] of RESOURCES.entries()) {
