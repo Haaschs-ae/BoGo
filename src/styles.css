@@ -1261,3 +1261,14 @@ main.matchups .field {
   white-space: pre-line;
   color: var(--muted, #b9b9b9);
 }
+
+/* En tête de ⚙ : version et mise à jour, séparées des réglages. */
+.settings .version {
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings .version p {
+  margin: 0 0 6px;
+}

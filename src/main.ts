@@ -2180,6 +2180,8 @@ function settingsView(): HTMLElement {
   save.classList.add("primary");
 
   view.append(
+    updateCard(),
+    versionSettings(),
     h("label", "", "Profil AoE4World", profile),
     h("label", "", "Clé API AoE4World", apiKey),
     h(
@@ -2224,8 +2226,6 @@ function settingsView(): HTMLElement {
     save,
     message,
     h("p", "hint", hotkeyHint()),
-    updateCard(),
-    versionSettings(),
   );
   if (state.gameError) {
     message.className = "status error";
