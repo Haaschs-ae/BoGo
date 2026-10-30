@@ -55,8 +55,15 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   const popCy = pop.y + pop.h / 2;
   const rowTolerance = pop.h * 0.6;
 
-  // Les autres fractions (au-dessus) ne sont pas des nombres du panneau.
-  const numbers = tokens.filter((t) => t !== pop && !POPULATION.test(clean(t.text))).flatMap(numbersOf);
+  // Les autres fractions (au-dessus) ne sont pas des nombres du panneau. Plus à droite, c'est
+  // le panneau de l'unité ou du bâtiment sélectionné (points de vie, attaque…) ; plus à gauche
+  // que la population, ce sont les icônes des ressources lues comme des chiffres (« 4 0 »).
+  const left = pop.x - pop.h * 0.5;
+  const right = pop.x + pop.h * 9.5;
+  const numbers = tokens
+    .filter((t) => t !== pop && !POPULATION.test(clean(t.text)))
+    .flatMap(numbersOf)
+    .filter((n) => n.cx >= left && n.cx <= right);
   const idleToken = numbers
     .filter((n) => Math.abs(n.cy - popCy) <= rowTolerance && n.cx > pop.x + pop.w)
     .sort((a, b) => a.cx - b.cx)[0];

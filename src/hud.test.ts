@@ -94,6 +94,35 @@ describe("parseHud", () => {
     expect(parseHud(hud(null))).toBeNull();
   });
 
+  it("ignore le panneau de la sélection et les icônes lues comme des chiffres (partie enregistrée, 6:40)", () => {
+    // Bâtiment sélectionné : « 1000/1000 » et « 25 » à droite ; icône de la pierre lue « 4e ».
+    const frame: OcrToken[] = [
+      { text: "0", x: 0.1908, y: 0.2407, w: 0.0347, h: 0.0324 },
+      { text: "24/30", x: 0.1156, y: 0.3611, w: 0.1387, h: 0.037 },
+      { text: "25/70", x: 0.1156, y: 0.4954, w: 0.1387, h: 0.037 },
+      { text: "458", x: 0.1156, y: 0.6296, w: 0.0983, h: 0.037 },
+      { text: "153", x: 0.1156, y: 0.7176, w: 0.0925, h: 0.037 },
+      { text: "95", x: 0.1156, y: 0.8102, w: 0.0636, h: 0.037 },
+      { text: "4e 11", x: 0.0462, y: 0.8981, w: 0.1329, h: 0.0324 },
+      { text: "0/7", x: 0.4334, y: 0.3609, w: 0.087, h: 0.0421 },
+      { text: "9", x: 0.422, y: 0.625, w: 0.0347, h: 0.0278 },
+      { text: "10", x: 0.4104, y: 0.713, w: 0.0694, h: 0.037 },
+      { text: "4", x: 0.422, y: 0.8056, w: 0.0347, h: 0.0278 },
+      { text: "1000/1000", x: 0.6879, y: 0.6713, w: 0.2543, h: 0.037 },
+      { text: "25", x: 0.6936, y: 0.8056, w: 0.0694, h: 0.0324 },
+    ];
+    expect(parseHud(frame)).toEqual({
+      population: 25,
+      populationMax: 70,
+      idle: 0,
+      stock: { food: 458, wood: 153, gold: 95, stone: 11 },
+      gatherers: { food: 9, wood: 10, gold: 4, stone: 0 },
+      villagers: 23,
+    });
+    // Le « 1000/1000 » seul, sans le vrai panneau, n'est pas une population.
+    expect(parseHud(frame.filter((t) => t.text !== "25/70"))).toBeNull();
+  });
+
   it("compte 0 pour les compteurs grisés que la reconnaissance n'a pas lus", () => {
     const grayZerosMissing = startOfGame.filter((t, i) => !(t.text === "0" && t.x > 0.4) || i === 0);
     const reading = parseHud(grayZerosMissing);

@@ -97,6 +97,9 @@ func recognizeText(in image: CGImage, area: CGRect) -> [VNRecognizedTextObservat
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = false
+    // Par défaut, Vision ignore le texte de moins de 1/32 de la hauteur de l'image : les petits
+    // chiffres des villageois par ressource (≈ 1/30 du panneau) sautaient une lecture sur deux.
+    request.minimumTextHeight = 1.0 / 80.0
     try? VNImageRequestHandler(cgImage: crop).perform([request])
     return request.results ?? []
 }
