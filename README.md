@@ -27,7 +27,7 @@ modes, coach contre l'IA, réglages, fair-play).
 
 BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Pour le fermer, ✕ puis
 « Quitter ? » (partout : en partie, dans la bibliothèque, sur la pastille « BO terminé ») ; pour
-seulement le masquer, ⌘⌥B (ou ton raccourci). À la fin du BO, BoGo se déverrouille pour que la
+seulement le masquer, Ctrl+Alt+B (ou ton raccourci). À la fin du BO, BoGo se déverrouille pour que la
 pastille réponde aux clics.
 
 ### Windows (expérimental)
@@ -38,7 +38,8 @@ SmartScreen affiche « Windows a protégé votre ordinateur » : « Informations
 puis « Exécuter quand même ». Pour l'instant, sous Windows :
 
 - **pas de lecture de l'écran** : le BO avance avec les raccourcis (suivi manuel) ;
-- raccourcis **Ctrl+Maj** au lieu de ⌘⌥ (Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…),
+- raccourcis **Ctrl+Maj** au lieu de Ctrl+Alt (Ctrl+Alt+lettre = AltGr sous Windows en AZERTY ;
+  Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…),
   modifiables dans ⚙ comme sur Mac ;
 - jeu installé (Steam, Xbox) : mets-le en **fenêtré sans bordure**, l'overlay ne peut pas
   s'afficher par-dessus le plein écran exclusif.
@@ -61,9 +62,9 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
 - **Choix du BO au début de la partie** : BoGo propose un BO (tes matchups d'abord, sinon un BO
   de ta bibliothèque) et dit pourquoi, avec un fait (« Gardé à 3 de tes 4 dernières parties avec English », « Gardé la
   dernière fois contre French » en 1v1, « Le plus récent de ta bibliothèque »). ▶ Lancer
-  (⌘⌥↵), ou une touche par catégorie : ⌘⌥1 Boom, ⌘⌥2 Agressif, ⌘⌥3 Fast Castle, ⌘⌥4 Autre,
+  (Ctrl+Alt+↵), ou une touche par catégorie : Ctrl+Alt+1 Boom, Ctrl+Alt+2 Agressif, Ctrl+Alt+3 Fast Castle, Ctrl+Alt+4 Autre,
   actives jusqu'au premier passage d'âge pour changer d'avis. En **1v1 classé ou rapide**, un
-  BO que tu as déjà joué, ou réglé dans tes matchups, se lance tout seul après **8 s** (⌘⌥⌫
+  BO que tu as déjà joué, ou réglé dans tes matchups, se lance tout seul après **8 s** (Ctrl+Alt+⌫
   annule) ; jamais en équipe ni en personnalisée, jamais un autre BO jamais joué, ni après 2:00 de jeu, ni BoGo masqué ou réduit,
   ni si ta répartition à l'écran ne correspond pas au BO, ni après 2 annulations de suite avec
   cette civ. Un BO lancé depuis la bibliothèque **avant** la partie est gardé tel quel.
@@ -97,10 +98,10 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
   les adversaires.
 - **Taille** : un curseur dans ⚙ règle la taille de BoGo de 70 à 130 %, en direct.
 - **En partie, les clics passent au jeu** : BoGo se verrouille au lancement d'un BO (cadenas
-  « 🔒 ⌘⌥L » en haut à droite) et se déverrouille pour choisir un BO ou ouvrir les réglages.
+  « 🔒 Ctrl+Alt+L » en haut à droite) et se déverrouille pour choisir un BO ou ouvrir les réglages.
 - **État de la lecture**, toujours visible en haut à droite : ● horloge verte = lecture OK ;
   ■ « Lecture coupée » = plus rien n'est lu (les chiffres disparaissent, bandeau « avance avec
-  ⌘⌥→ ») ; ◆ « Lecture arrêtée » = voir ⚙. BoGo n'affiche jamais de chiffres périmés.
+  Ctrl+Alt+→ ») ; ◆ « Lecture arrêtée » = voir ⚙. BoGo n'affiche jamais de chiffres périmés.
 - **Fin du BO** : sur l'objectif de la dernière étape (passage d'âge ou TC payé, landmark en
   construction, ou villageois et répartition tenus 10 s), jamais sur le seul nombre de villageois.
   Une nouvelle partie rouvre toujours le choix du BO.
@@ -108,7 +109,7 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
   lectures de l'écran, pour rejouer une partie et régler BoGo sans repasser par GeForce Now.
   Rien n'est envoyé ; la liste des applis n'y figure pas.
 - **Mode réduit** : quand le BO est terminé, BoGo se réduit à une pastille (« ✓ BO
-  terminé », horloge, inactifs). ⌘⌥M ou ▾ / ▴ pour réduire ou agrandir à tout moment.
+  terminé », horloge, inactifs). Ctrl+Alt+M ou ▾ / ▴ pour réduire ou agrandir à tout moment.
 - **Suivi automatique** : BoGo lit l'écran de GeForce Now une fois par seconde (macOS 14
   ou plus) : l'horloge, et le panneau en bas à gauche (population, villageois inactifs,
   stocks, villageois par ressource).
@@ -119,7 +120,7 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
     répartition (`src/distribution.ts`). Une partie n'est pas lisse (attaque, villageois en
     plus) : BoGo avance prudemment, une étape à la fois, après 5 s au moins sur chacune.
     Si la répartition n'est pas suivie, il reste sur l'étape, dit quoi corriger, et à
-    partir de 3 villageois en plus propose ⌘⌥→ au lieu de sauter l'étape tout seul.
+    partir de 3 villageois en plus propose Ctrl+Alt+→ au lieu de sauter l'étape tout seul.
     Une étape sans cible de villageois (-1, simple construction) garde celle d'avant.
   - Sur une étape « passe l'âge » ou « construis un TC », BoGo attend : un bandeau
     montre les ressources qu'il manque, puis devient vert et clignote quand tu as de
@@ -148,10 +149,10 @@ puis « Exécuter quand même ». Pour l'instant, sous Windows :
 
 | Raccourci | Action |
 |-----------|--------|
-| ⌘ ⌥ → / ⌘ ⌥ ← | Étape suivante / précédente |
-| ⌘ ⌥ L | Verrouiller : les clics traversent l'overlay et vont au jeu |
-| ⌘ ⌥ M | Réduire / agrandir (pastille) |
-| ⌘ ⌥ B | Afficher / masquer l'overlay |
+| Ctrl+Alt+→ / Ctrl+Alt+← | Étape suivante / précédente |
+| Ctrl+Alt+L | Verrouiller : les clics traversent l'overlay et vont au jeu |
+| Ctrl+Alt+M | Réduire / agrandir (pastille) |
+| Ctrl+Alt+B | Afficher / masquer l'overlay |
 
 Ce sont les raccourcis par défaut (Ctrl+Maj sous Windows). **Tous se changent dans ⚙ ›
 Raccourcis** : « Changer », puis taper la combinaison voulue (avec ⌘, ⌃ ou ⌥, ou une touche F

@@ -38,6 +38,8 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   Rust propre à chaque système. Raccourcis Windows : Ctrl+Maj (pas Ctrl+Alt = AltGr en AZERTY),
   à valider avec des testeurs Windows. L'édition Windows est expérimentale (suivi manuel) tant
   que la lecture d'écran Windows n'existe pas.
+- **2026-10-30 · Raccourcis Mac par défaut : Ctrl+Alt** (au lieu de ⌘⌥), écrits en toutes lettres :
+  le joueur utilise un clavier Windows AZERTY sur son Mac. Windows garde Ctrl+Maj (AltGr).
 - **2026-10-29 · Pas de version « libre » (coaching complet en classé).** Envisagée puis écartée
   par le joueur : elle annulerait la protection voulue vis-à-vis de World's Edge. On garde VS / IA.
 - **2026-10-29 · Deux modes : VS (contre des joueurs, par défaut) et IA (entraînement contre

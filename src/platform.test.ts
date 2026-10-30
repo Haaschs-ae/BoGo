@@ -61,17 +61,18 @@ describe("raccourcis (Mac)", () => {
     vi.resetModules();
   });
 
-  it("⌘⌥ par défaut, ⌘ tapé = CommandOrControl", async () => {
+  it("Ctrl+Alt par défaut, écrit en toutes lettres ; ⌘ reste ⌘", async () => {
     vi.resetModules();
     vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" });
     const mac = await import("./platform");
-    expect(mac.hotkeyLabel(mac.DEFAULT_HOTKEYS.next)).toBe("⌘⌥→");
-    expect(mac.hotkeyLabel("Control+Shift+F5")).toBe("⌃⇧F5");
-    const typed = mac.acceleratorFromEvent(keys("KeyL", { metaKey: true, altKey: true }));
-    expect(typed).toBe("Command+Alt+KeyL");
+    expect(mac.hotkeyLabel(mac.DEFAULT_HOTKEYS.next)).toBe("Ctrl+Alt+→");
+    expect(mac.hotkeyLabel(mac.DEFAULT_HOTKEYS.launch)).toBe("Ctrl+Alt+↵");
+    expect(mac.hotkeyLabel("Command+Shift+F5")).toBe("⌘⇧F5");
+    const typed = mac.acceleratorFromEvent(keys("KeyL", { ctrlKey: true, altKey: true }));
+    expect(typed).toBe("Control+Alt+KeyL");
     expect(mac.sameHotkey(typed!, mac.DEFAULT_HOTKEYS.lock)).toBe(true);
     expect(mac.checkHotkey("Command+KeyQ", "next")).toMatch(/réservé/);
-    // Ctrl+Alt n'est pas AltGr sur Mac.
+    // Ctrl+Alt n'est pas AltGr sur Mac : un raccourci Ctrl+Alt+lettre est permis.
     expect(mac.checkHotkey("Control+Alt+KeyN", "next")).toBeNull();
   });
 });
