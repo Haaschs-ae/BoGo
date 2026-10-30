@@ -13,8 +13,8 @@ modes, coach contre l'IA, réglages, fair-play).
 
 ## Installer et tester
 
-1. Ouvre l'onglet **Actions** du repo, puis la dernière exécution réussie de **Build**.
-2. En bas, télécharge l'artefact **BoGo-macos** (un zip qui contient le `.dmg`).
+1. Va sur la page **[Releases](https://github.com/Haaschs-ae/BoGo/releases/latest)** du dépôt.
+2. Télécharge **BoGo_X.Y.Z_universal.dmg** (Mac Apple Silicon et Intel).
 3. Ouvre le `.dmg` et glisse **BoGo** dans **Applications**.
 4. L'appli n'est pas signée par un développeur Apple. Au premier lancement, macOS
    la bloque : va dans **Réglages Système → Confidentialité et sécurité** et clique
@@ -38,7 +38,7 @@ pastille réponde aux clics.
 ### Windows (expérimental)
 
 La même appli existe pour Windows, construite depuis le même code : télécharge **BoGo-windows**
-(installateur `.exe`) sur la même page GitHub Actions. Tant que BoGo n'est pas signé, Windows
+(installateur `BoGo_X.Y.Z_x64-setup.exe`) sur la même page Releases. Tant que BoGo n'est pas signé, Windows
 SmartScreen affiche « Windows a protégé votre ordinateur » : « Informations complémentaires »,
 puis « Exécuter quand même ». Pour l'instant, sous Windows :
 
