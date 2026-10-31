@@ -38,6 +38,7 @@ import {
   hotkeyHint,
   hotkeyLabel,
   HOTKEYS,
+  IS_MAC,
   KEYS,
   sameHotkey,
   SCREEN_READING,
@@ -125,14 +126,20 @@ type VisionEvent =
   | { type: "clock"; seconds: number; text: string }
   | { type: "hud"; tokens: OcrToken[] }
   | { type: "top"; tokens: OcrToken[] }
-  | { type: "status"; code: "ok" | "no_window" | "no_clock"; apps?: string[] }
+  | { type: "status"; code: "ok" | "no_window" | "no_clock" | "background"; apps?: string[] }
   | { type: "error"; code: string; message: string }
   | { type: "stopped"; status?: string; detail?: string };
 
 const VISION_STATUS: Record<string, string> = {
   ok: "Horloge du jeu lue.",
-  no_window: "Fenêtre GeForce Now introuvable : lance-la, en plein écran de préférence.",
-  no_clock: "GeForce Now trouvé, mais pas d'horloge à l'écran (pas encore en partie ?).",
+  no_window: IS_MAC
+    ? "Fenêtre GeForce Now introuvable : lance-la, en plein écran de préférence."
+    : "Fenêtre d'AoE4 (ou de GeForce Now) introuvable : lance le jeu, en plein écran fenêtré.",
+  no_clock: IS_MAC
+    ? "GeForce Now trouvé, mais pas d'horloge à l'écran (pas encore en partie ?)."
+    : "Jeu trouvé, mais pas d'horloge à l'écran (pas encore en partie ?).",
+  // Windows : la lecture se met en pause quand une autre fenêtre est devant le jeu.
+  background: "Le jeu n'est pas au premier plan : la lecture reprend dès que tu reviens dessus.",
   stopped: "Lecture de l'écran arrêtée.",
 };
 
@@ -2028,7 +2035,9 @@ function visionText(): string {
   if (parts.length) return `Lu à l'écran : ${parts.join(" · ")}.`;
   const status = VISION_STATUS[state.vision.status] ?? "Lecture de l'écran en cours de démarrage…";
   // La liste des applis ouvertes (visionApps) reste hors écran : elle finirait sur une capture.
-  if (state.vision.status === "no_window" && visionApps.length) return `${status} Une appli NVIDIA est ouverte.`;
+  if (state.vision.status === "no_window" && visionApps.some((app) => /nvidia|geforce/i.test(app))) {
+    return `${status} Une appli NVIDIA est ouverte.`;
+  }
   return status;
 }
 
@@ -2213,7 +2222,7 @@ function settingsView(): HTMLElement {
       "checkbox",
       readScreen,
       SCREEN_READING
-        ? "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"
+        ? `Lire l'écran ${IS_MAC ? "de GeForce Now" : "du jeu"} (horloge, villageois, ressources) : le BO avance tout seul`
         : "Lecture de l'écran : pas encore disponible sous Windows (Mac seulement). En attendant, le BO avance avec les raccourcis.",
     ),
     h(

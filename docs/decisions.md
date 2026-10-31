@@ -83,3 +83,11 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
 - **2026-10-30 · Panneau du jeu : rien plutôt qu'une lecture décalée.** Les quatre lignes de
   ressources doivent être régulièrement espacées et suivre la population de près ; sinon pas de
   lecture (vu en partie : villageois attribués aux mauvaises ressources).
+- **2026-10-31 · Lecture de l'écran sous Windows.** bogo-vision réécrit en Rust (`vision-win/`),
+  mêmes événements que la version Swift : fenêtre d'AoE4 (RelicCardinal) ou de GeForce Now,
+  capture GDI des deux zones (horloge, panneau), agrandissement ×3 en niveaux de gris, puis
+  Windows.Media.Ocr (anglais, sinon la langue de Windows). Lecture seulement quand le jeu est au
+  premier plan (sinon on lirait une autre fenêtre). L'overlay s'exclut des captures
+  (WDA_EXCLUDEFROMCAPTURE) : il peut être posé sur le panneau sans gêner la lecture ; il
+  n'apparaît pas non plus dans un stream. Plein écran exclusif détecté : rien n'est tenté.
+

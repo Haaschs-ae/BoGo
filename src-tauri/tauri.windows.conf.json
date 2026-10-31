@@ -4,6 +4,9 @@
     "targets": [
       "nsis"
     ],
+    "externalBin": [
+      "binaries/bogo-vision"
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser",

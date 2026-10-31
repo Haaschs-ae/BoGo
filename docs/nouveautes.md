@@ -3,6 +3,11 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.0
+
+- Windows : lecture de l'écran (à l'essai). BoGo lit l'horloge et le panneau des villageois du jeu (Steam, Xbox ou GeForce Now) et avance tout seul, comme sur Mac. Active-la dans ⚙.
+- Windows : BoGo n'apparaît pas dans les captures d'écran ni dans un stream.
+
 ## 0.2.5
 
 - Windows : BoGo ne fait plus disparaître le jeu en plein écran. Il prévient que le jeu doit être en « Plein écran fenêtré » pour pouvoir s'afficher par-dessus.

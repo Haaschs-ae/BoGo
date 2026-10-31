@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Lecteur d'écran Windows : sa partie commune (horloge, zones, agrandissement).
+      - run: cargo test --manifest-path vision-win/Cargo.toml
 
   macos:
     needs: test
@@ -73,7 +75,7 @@ jobs:
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
-  # Édition Windows expérimentale (suivi manuel, sans lecture de l'écran pour l'instant) :
+  # Édition Windows (lecture de l'écran avec la reconnaissance de texte de Windows) :
   # son échec ne bloque pas la version Mac.
   windows:
     needs: test
@@ -91,8 +93,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            vision-win
       - run: npm ci
+      # bogo-vision pour Windows, au nom attendu par Tauri pour un binaire externe.
+      - name: Lecture de l'écran (bogo-vision)
+        shell: bash
+        run: |
+          cargo build --release --manifest-path vision-win/Cargo.toml
+          mkdir -p src-tauri/binaries
+          cp vision-win/target/release/bogo-vision.exe src-tauri/binaries/bogo-vision-x86_64-pc-windows-msvc.exe
       - shell: bash
         run: |
           extra=()

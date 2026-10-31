@@ -256,16 +256,22 @@ fn start_vision(app: AppHandle, vision: State<Vision>) -> Result<(), String> {
             return Ok(());
         }
     }
-    if !cfg!(target_os = "macos") {
-        return Err("La lecture de l'écran n'existe que sur macOS pour l'instant.".into());
+    if !cfg!(any(target_os = "macos", windows)) {
+        return Err("La lecture de l'écran n'existe que sur macOS et Windows.".into());
     }
     // Tauri place les binaires externes à côté de l'exécutable de l'appli.
     let helper = std::env::current_exe()
         .map_err(|e| e.to_string())?
-        .with_file_name("bogo-vision");
-    let mut child = Command::new(&helper)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .with_file_name(format!("bogo-vision{}", std::env::consts::EXE_SUFFIX));
+    let mut command = Command::new(&helper);
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        // Pas de fenêtre de console qui s'ouvre.
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command
         .spawn()
         .map_err(|e| format!("Impossible de lancer la lecture de l'écran ({}) : {e}", helper.display()))?;
     let stdout = child.stdout.take().ok_or("Sortie de bogo-vision indisponible.")?;
@@ -344,8 +350,22 @@ mod windows {
     use windows_sys::Win32::Foundation::HWND;
     use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+        SetWindowDisplayAffinity, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+        SWP_NOSIZE, WDA_EXCLUDEFROMCAPTURE,
     };
+
+    /// L'overlay n'apparaît pas dans les captures d'écran : la lecture de l'écran (bogo-vision)
+    /// voit le jeu même quand BoGo est posé sur le panneau des villageois.
+    pub fn exclude_from_capture(app: &AppHandle) {
+        let Some(window) = app.get_webview_window("overlay") else {
+            return;
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            unsafe {
+                SetWindowDisplayAffinity(hwnd.0 as HWND, WDA_EXCLUDEFROMCAPTURE);
+            }
+        }
+    }
 
     /// Un jeu Direct3D en plein écran exclusif occupe l'écran.
     fn exclusive_fullscreen() -> bool {
@@ -429,6 +449,8 @@ pub fn run() {
                 _app.set_activation_policy(tauri::ActivationPolicy::Accessory);
                 macos::float_over_fullscreen(_app.handle())?;
             }
+            #[cfg(windows)]
+            windows::exclude_from_capture(_app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

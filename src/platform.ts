@@ -5,10 +5,10 @@
 export const IS_MAC = /Macintosh|Mac OS X/i.test(navigator.userAgent);
 
 /**
- * Lecture de l'écran (horloge, panneau des villageois) : macOS seulement pour l'instant.
- * Sous Windows, BoGo suit le BO avec les raccourcis en attendant le lecteur Windows.
+ * Lecture de l'écran (horloge, panneau des villageois) : bogo-vision, en Swift sur Mac (fenêtre
+ * GeForce Now), en Rust sous Windows (fenêtre d'AoE4 ou de GeForce Now).
  */
-export const SCREEN_READING = IS_MAC;
+export const SCREEN_READING = true;
 
 export type HotkeyAction = "next" | "previous" | "lock" | "toggle" | "mini" | "launch" | "cancel" | "cat1" | "cat2" | "cat3" | "cat4";
 

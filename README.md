@@ -40,14 +40,17 @@ pastille réponde aux clics.
 La même appli existe pour Windows, construite depuis le même code : télécharge l'installateur Windows
 (`BoGo_X.Y.Z_x64-setup.exe`) sur la même page Releases. Tant que BoGo n'est pas signé, Windows
 SmartScreen affiche « Windows a protégé votre ordinateur » : « Informations complémentaires »,
-puis « Exécuter quand même ». Pour l'instant, sous Windows :
+puis « Exécuter quand même ». Sous Windows :
 
-- **pas de lecture de l'écran** : le BO avance avec les raccourcis (suivi manuel) ;
+- **lecture de l'écran** (nouvelle, à l'essai) : BoGo lit l'horloge et le panneau des villageois
+  du jeu installé (Steam, Xbox) ou de GeForce Now, avec la reconnaissance de texte intégrée à
+  Windows (il faut l'anglais parmi les langues de Windows). Il ne lit que quand le jeu est au
+  premier plan, et BoGo lui-même n'apparaît pas dans les captures d'écran (ni dans un stream) ;
 - raccourcis **Ctrl+Maj** au lieu de Ctrl+Alt (Ctrl+Alt+lettre = AltGr sous Windows en AZERTY ;
   Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…),
   modifiables dans ⚙ comme sur Mac ;
-- jeu installé (Steam, Xbox) : mets-le en **fenêtré sans bordure**, l'overlay ne peut pas
-  s'afficher par-dessus le plein écran exclusif.
+- mets le jeu en **plein écran fenêtré** (ou fenêtré sans bordure) : rien ne peut s'afficher
+  par-dessus le plein écran exclusif ; BoGo le signale par un bandeau.
 
 ## Utilisation
 
