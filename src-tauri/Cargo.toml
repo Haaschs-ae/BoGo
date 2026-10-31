@@ -1,6 +1,6 @@
 [package]
 name = "bogo"
-version = "0.2.3"
+version = "0.2.4"
 description = "Overlay de build orders pour Age of Empires IV"
 edition = "2021"
 
@@ -21,3 +21,7 @@ tauri-plugin-updater = "2"
 [target.'cfg(target_os = "macos")'.dependencies]
 # Transforme l'overlay en NSPanel, seul type de fenêtre affiché par-dessus une appli en plein écran.
 tauri-nspanel = "2.1"
+
+[target.'cfg(windows)'.dependencies]
+# Remet l'overlay au premier plan sans lui donner le focus (SetWindowPos).
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.2.4
+
+- Windows : BoGo se remet devant le jeu toutes les 2 secondes quand le jeu passe par-dessus (jeu en plein écran fenêtré / sans bordure).
+
 ## 0.2.3
 
 - Mise à jour en haut de ⚙ : version installée et bouton « Rechercher une mise à jour » en premier.

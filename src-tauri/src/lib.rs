@@ -316,7 +316,8 @@ fn stop_vision(vision: State<Vision>) {
 }
 
 /// Appelé régulièrement par l'interface : ramène l'overlay devant le jeu,
-/// macOS pouvant repasser GeForce Now devant en changeant de bureau ou de plein écran.
+/// macOS pouvant repasser GeForce Now devant en changeant de bureau ou de plein écran,
+/// Windows le jeu quand il prend le focus.
 #[tauri::command]
 fn keep_overlay_on_top(app: AppHandle) {
     #[cfg(target_os = "macos")]
@@ -324,8 +325,43 @@ fn keep_overlay_on_top(app: AppHandle) {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || macos::bring_to_front(&handle));
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    windows::bring_to_front(&app);
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = app;
+}
+
+#[cfg(windows)]
+mod windows {
+    use tauri::{AppHandle, Manager};
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+    };
+
+    /// Le jeu (fenêtré sans bordure) peut passer devant l'overlay en prenant le focus : on remet
+    /// l'overlay en tête des fenêtres « toujours au premier plan », sans l'activer ni le montrer
+    /// s'il est masqué. Ne marche pas sur un jeu en plein écran exclusif (aucun overlay ne le peut
+    /// sans s'injecter dans le jeu, ce que BoGo ne fait jamais).
+    pub fn bring_to_front(app: &AppHandle) {
+        let Some(window) = app.get_webview_window("overlay") else {
+            return;
+        };
+        let Ok(hwnd) = window.hwnd() else {
+            return;
+        };
+        unsafe {
+            SetWindowPos(
+                hwnd.0 as HWND,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            );
+        }
+    }
 }
 
 #[tauri::command]
