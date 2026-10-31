@@ -1090,8 +1090,26 @@ function render() {
   };
   const view = state.view === "play" && !current() ? "civs" : state.view === "choice" && !state.offer ? "civ" : state.view;
   const body = (view === "civ" || view === "matchups") && !state.civ ? civsView() : views[view]();
-  app.replaceChildren(view === "play" ? playHeader(current()!) : header(), body);
+  app.replaceChildren(view === "play" ? playHeader(current()!) : header(), fullscreenNotice(), body);
   fitWindow();
+}
+
+/** Vrai quand Windows signale un jeu en plein écran exclusif (voir keep_overlay_on_top). */
+let exclusiveFullscreen = false;
+
+function fullscreenNotice(): HTMLElement | "" {
+  if (!exclusiveFullscreen) return "";
+  return h(
+    "div",
+    "news fullscreen-notice",
+    h("strong", "", "Le jeu est en plein écran : BoGo ne peut pas s'afficher par-dessus"),
+    h(
+      "p",
+      "",
+      "Dans AoE4 : Options → Graphismes → Mode d'affichage → « Plein écran fenêtré » (ou fenêtré sans bordure). " +
+        "BoGo ne s'injecte jamais dans le jeu : c'est le seul moyen de le voir par-dessus.",
+    ),
+  );
 }
 
 const PLAY_WIDTH = 360;
@@ -2196,7 +2214,7 @@ function settingsView(): HTMLElement {
       readScreen,
       SCREEN_READING
         ? "Lire l'écran de GeForce Now (horloge, villageois, ressources) : le BO avance tout seul"
-        : "Lecture de l'écran : bientôt sous Windows. En attendant, suivi manuel avec les raccourcis.",
+        : "Lecture de l'écran : pas encore disponible sous Windows (Mac seulement). En attendant, le BO avance avec les raccourcis.",
     ),
     h(
       "p",
@@ -2290,7 +2308,17 @@ listen<VisionEvent>("vision", (event) => onVision(event.payload)).then(() => {
   if (SCREEN_READING && state.settings.readScreen) startVision();
 });
 // macOS peut repasser GeForce Now (plein écran) devant l'overlay : on le remet au premier plan.
-setInterval(() => invoke("keep_overlay_on_top").catch(() => {}), 2000);
+// Sous Windows, un jeu en plein écran exclusif ne laisse rien s'afficher par-dessus : BoGo le
+// signale (et ne se remet pas devant, ce qui réduirait le jeu).
+setInterval(() => {
+  invoke<boolean>("keep_overlay_on_top")
+    .then((blocked) => {
+      if (blocked === exclusiveFullscreen) return;
+      exclusiveFullscreen = blocked;
+      render();
+    })
+    .catch(() => {});
+}, 2000);
 // Quand bogo-vision ne lit plus rien, aucun événement n'arrive : sans ce minuteur, la vue
 // garderait les derniers chiffres comme s'ils étaient en direct. On ne redessine qu'au changement.
 setInterval(() => {

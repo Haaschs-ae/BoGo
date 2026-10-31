@@ -1,6 +1,6 @@
 [package]
 name = "bogo"
-version = "0.2.4"
+version = "0.2.5"
 description = "Overlay de build orders pour Age of Empires IV"
 edition = "2021"
 
@@ -23,5 +23,6 @@ tauri-plugin-updater = "2"
 tauri-nspanel = "2.1"
 
 [target.'cfg(windows)'.dependencies]
-# Remet l'overlay au premier plan sans lui donner le focus (SetWindowPos).
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+# Remet l'overlay au premier plan sans lui donner le focus (SetWindowPos), sauf devant un jeu
+# en plein écran exclusif (SHQueryUserNotificationState).
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

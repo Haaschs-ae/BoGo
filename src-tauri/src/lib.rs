@@ -317,38 +317,56 @@ fn stop_vision(vision: State<Vision>) {
 
 /// Appelé régulièrement par l'interface : ramène l'overlay devant le jeu,
 /// macOS pouvant repasser GeForce Now devant en changeant de bureau ou de plein écran,
-/// Windows le jeu quand il prend le focus.
+/// Windows le jeu quand il prend le focus. Renvoie vrai si un jeu est en plein écran
+/// exclusif (Windows) : aucune fenêtre ne peut alors s'afficher par-dessus.
 #[tauri::command]
-fn keep_overlay_on_top(app: AppHandle) {
+fn keep_overlay_on_top(app: AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || macos::bring_to_front(&handle));
+        false
     }
     #[cfg(windows)]
-    windows::bring_to_front(&app);
+    {
+        windows::bring_to_front(&app)
+    }
     #[cfg(not(any(target_os = "macos", windows)))]
-    let _ = app;
+    {
+        let _ = app;
+        false
+    }
 }
 
 #[cfg(windows)]
 mod windows {
     use tauri::{AppHandle, Manager};
     use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
     };
 
-    /// Le jeu (fenêtré sans bordure) peut passer devant l'overlay en prenant le focus : on remet
+    /// Un jeu Direct3D en plein écran exclusif occupe l'écran.
+    fn exclusive_fullscreen() -> bool {
+        let mut state = 0;
+        unsafe { SHQueryUserNotificationState(&mut state) >= 0 && state == QUNS_RUNNING_D3D_FULL_SCREEN }
+    }
+
+    /// Le jeu (plein écran fenêtré) peut passer devant l'overlay en prenant le focus : on remet
     /// l'overlay en tête des fenêtres « toujours au premier plan », sans l'activer ni le montrer
-    /// s'il est masqué. Ne marche pas sur un jeu en plein écran exclusif (aucun overlay ne le peut
-    /// sans s'injecter dans le jeu, ce que BoGo ne fait jamais).
-    pub fn bring_to_front(app: &AppHandle) {
+    /// s'il est masqué. Devant un jeu en plein écran exclusif, on ne touche à rien : passer
+    /// devant le réduirait, et aucun overlay ne peut s'y afficher sans s'injecter dans le jeu
+    /// (ce que BoGo ne fait jamais). Renvoie vrai dans ce cas, pour prévenir le joueur.
+    pub fn bring_to_front(app: &AppHandle) -> bool {
+        if exclusive_fullscreen() {
+            return true;
+        }
         let Some(window) = app.get_webview_window("overlay") else {
-            return;
+            return false;
         };
         let Ok(hwnd) = window.hwnd() else {
-            return;
+            return false;
         };
         unsafe {
             SetWindowPos(
@@ -361,6 +379,7 @@ mod windows {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
             );
         }
+        false
     }
 }
 
