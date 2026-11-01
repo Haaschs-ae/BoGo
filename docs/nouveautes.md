@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.2
+
+- Windows : la mise à jour ne bloque plus sur « Erreur lors de l'ouverture du fichier en écriture : bogo-vision.exe ». La lecture de l'écran s'arrête avec BoGo et avant chaque installation.
+
 ## 0.3.1
 
 - Windows : option « Montrer BoGo dans mes streams et captures d'écran » dans ⚙ (masqué par défaut).

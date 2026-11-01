@@ -13,7 +13,8 @@
         "languages": [
           "French",
           "English"
-        ]
+        ],
+        "installerHooks": "windows/hooks.nsh"
       }
     }
   }

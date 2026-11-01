@@ -168,6 +168,9 @@ func run() async {
                 )
             }
         }
+        // Une ligne vide chaque tour (ignorée par BoGo) : BoGo fermé, l'écriture échoue et
+        // arrête bogo-vision, même quand aucun statut ne change (pas de fenêtre GeForce Now).
+        print("")
         try? await Task.sleep(nanoseconds: delay)
     }
 }

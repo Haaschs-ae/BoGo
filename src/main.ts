@@ -729,6 +729,10 @@ async function installUpdate() {
   let total = 0;
   let received = 0;
   try {
+    // La lecture de l'écran s'arrête d'abord : sous Windows, l'installateur ne peut pas
+    // remplacer un bogo-vision.exe qui tourne.
+    await invoke("stop_vision").catch(() => {});
+    state.vision = { status: "", error: null };
     await pendingUpdate.downloadAndInstall((event) => {
       if (event.event === "Started") total = event.data.contentLength ?? 0;
       if (event.event === "Progress") {
@@ -748,6 +752,8 @@ async function installUpdate() {
   } catch (err) {
     shown.status = "error";
     shown.error = errorText(err);
+    // Mise à jour ratée : la lecture de l'écran reprend.
+    if (SCREEN_READING && state.settings.readScreen) startVision();
     render();
   }
 }

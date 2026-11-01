@@ -43,6 +43,16 @@ impl Output {
         }
     }
 
+    /// Une ligne vide chaque seconde (ignorée par BoGo) : sans elle, rien ne s'écrit tant que
+    /// le statut ne change pas (pas de jeu ouvert), et un bogo-vision dont BoGo est fermé
+    /// tournerait sans fin, bloquant l'installation de la version suivante.
+    fn heartbeat(&mut self) {
+        let mut out = std::io::stdout().lock();
+        if writeln!(out).and_then(|_| out.flush()).is_err() {
+            std::process::exit(0);
+        }
+    }
+
     /// Les statuts ne sont envoyés que lorsqu'ils changent.
     fn status(&mut self, code: &str, extra: Option<Value>) {
         if self.last_status == code {
@@ -83,7 +93,10 @@ pub fn run() {
                     "La reconnaissance de texte de Windows est indisponible : ajoute l'anglais dans Paramètres → \
                      Heure et langue → Langue et région (avec « Reconnaissance optique de caractères »), puis relance BoGo.",
                 );
-                std::thread::sleep(Duration::from_secs(10));
+                for _ in 0..10 {
+                    out.heartbeat();
+                    std::thread::sleep(Duration::from_secs(1));
+                }
             }
         }
     };
@@ -113,6 +126,7 @@ pub fn run() {
                 }
             },
         }
+        out.heartbeat();
         std::thread::sleep(delay);
     }
 }
