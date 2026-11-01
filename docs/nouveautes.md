@@ -3,6 +3,12 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.8
+
+- Population lue même collée à son icône (« € 8/10 ») : sur une partie Mac enregistrée, 99 lectures du panneau sur 146 au lieu de 31.
+- Stock de pierre juste (l'icône lue « 4 » est ignorée) ; un stock illisible compte 0 au lieu de faire rejeter tout le panneau.
+- Plus jamais une fraction au-dessus du panneau (« 1/9 ») prise pour la population.
+
 ## 0.3.7
 
 - Mac : lecture renforcée du panneau des villageois, comme sous Windows (seconde lecture en texte sombre sur fond clair, chiffres seuls de la colonne des villageois lus ensemble).

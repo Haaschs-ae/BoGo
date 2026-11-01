@@ -90,8 +90,9 @@ describe("parseHud", () => {
     });
     // Population orange mal lue ou pas lue : rien plutôt qu'une lecture décalée sous « 8/10 ».
     expect(parseHud(hud(token("g/10", 42, 858, 78, 878)))).toBeNull();
-    expect(parseHud(hud(token("合 9/10", 20, 858, 78, 878)))).toBeNull();
     expect(parseHud(hud(null))).toBeNull();
+    // L'icône de la maison lue avec la population (« 合 9/10 ») : la bonne lecture, pas un décalage.
+    expect(parseHud(hud(token("合 9/10", 20, 858, 78, 878)))?.gatherers).toEqual({ food: 6, wood: 1, gold: 0, stone: 0 });
   });
 
   it("ignore le panneau de la sélection et les icônes lues comme des chiffres (partie enregistrée, 6:40)", () => {
@@ -159,6 +160,31 @@ describe("parseHud", () => {
     expect(parseHud(frame)).toBeNull();
   });
 
+  it("lit la population collée à son icône et ignore l'icône de la pierre (partie enregistrée sur Mac, 0:40)", () => {
+    const frame: OcrToken[] = [
+      { text: "1/9", x: 0.15, y: 0.3615, w: 0.081, h: 0.037 },
+      { text: "0/1", x: 0.422, y: 0.3615, w: 0.081, h: 0.037 },
+      { text: "€ 8/10", x: 0.028, y: 0.4835, w: 0.198, h: 0.051 },
+      { text: "2", x: 0.422, y: 0.496, w: 0.035, h: 0.032 },
+      { text: "5", x: 0.422, y: 0.625, w: 0.035, h: 0.028 },
+      { text: "161", x: 0.116, y: 0.6295, w: 0.092, h: 0.037 },
+      { text: "® 1", x: 0.364, y: 0.708, w: 0.087, h: 0.042 },
+      { text: "200", x: 0.116, y: 0.7175, w: 0.098, h: 0.037 },
+      { text: "100", x: 0.121, y: 0.81, w: 0.087, h: 0.032 },
+      { text: "4 0", x: 0.046, y: 0.898, w: 0.104, h: 0.032 },
+    ];
+    expect(parseHud(frame)).toEqual({
+      population: 8,
+      populationMax: 10,
+      idle: 2,
+      stock: { food: 161, wood: 200, gold: 100, stone: 0 },
+      gatherers: { food: 5, wood: 1, gold: 0, stone: 0 },
+      villagers: 6,
+    });
+    // Population bien au-delà du maximum (« 112/25 ») : chiffre lu en trop, pas de lecture.
+    expect(parseHud(frame.map((t) => (t.text === "€ 8/10" ? { ...t, text: "112/25" } : t)))).toBeNull();
+  });
+
   it("compte 0 pour les compteurs grisés que la reconnaissance n'a pas lus", () => {
     const grayZerosMissing = startOfGame.filter((t, i) => !(t.text === "0" && t.x > 0.4) || i === 0);
     const reading = parseHud(grayZerosMissing);
@@ -204,7 +230,8 @@ describe("parseHud", () => {
 
   it("refuse une lecture incomplète ou incohérente", () => {
     expect(parseHud(startOfGame.filter((t) => t.text !== "7/10"))).toBeNull();
-    expect(parseHud(startOfGame.filter((t) => t.text !== "100"))).toBeNull();
+    // Un stock illisible compte 0 (la ligne reste à sa place) : pas de quoi tout rejeter.
+    expect(parseHud(startOfGame.filter((t) => t.text !== "100"))?.stock.gold).toBe(0);
     const tooMany = startOfGame.map((t) => (t.text === "6" ? { ...t, text: "60" } : t));
     // 60 villageois pour 7 de population : chiffre mal lu.
     expect(parseHud(tooMany)).toBeNull();

@@ -45,7 +45,8 @@ const MAX_POPULATION = 300;
 /** Bord gauche du panneau, en fraction de la zone lue : la population y est (x ≈ 0,12). */
 const POPULATION_MAX_X = 0.3;
 
-export function parseHud(tokens: OcrToken[]): HudReading | null {
+export function parseHud(read: OcrToken[]): HudReading | null {
+  const tokens = read.map((t) => fractionOnly(t) ?? t);
   // Plusieurs fractions peuvent s'afficher au-dessus du panneau (« 12/20 », « 0/7 ») : la
   // population est la plus basse qui a ses quatre lignes de ressources en dessous.
   // La population est au bord gauche du panneau ; plus à droite, une fraction est celle du
@@ -64,6 +65,8 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   const [, current, max] = POPULATION.exec(clean(pop.text))!;
   // Population de 300 au plus : « 7000/7000 », ce sont les points de vie d'un bâtiment.
   if (Number(max) > MAX_POPULATION || Number(current) > MAX_POPULATION) return null;
+  // Bien au-delà du maximum (« 112/25 ») : un chiffre lu en trop.
+  if (Number(current) > Number(max) + 50) return null;
   const popCy = pop.y + pop.h / 2;
   const rowTolerance = pop.h * 0.6;
 
@@ -83,7 +86,7 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   // La population est la fraction la plus basse du panneau : une autre fraction en dessous,
   // c'est elle la population (celle-ci est « 12/20 » ou « 8/10 », au-dessus).
   const below = tokens.some(
-    (t) => t !== pop && POPULATION.test(clean(t.text)) && t.y + t.h / 2 > popCy + rowTolerance && t.x >= left && t.x <= right,
+    (t) => t !== pop && POPULATION.test(clean(t.text)) && t.y + t.h / 2 > popCy + rowTolerance && t.x < POPULATION_MAX_X,
   );
   if (below) return null;
   const idleToken = numbers
@@ -91,7 +94,9 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
     .sort((a, b) => a.cx - b.cx)[0];
 
   // Les villageois par ressource sont alignés sur les inactifs ; les stocks sur la population.
-  const gatherersX = idleToken?.cx ?? pop.x + 3 * pop.w;
+  // Sans inactifs lus : environ 12 caractères à droite du début de la population (mesuré sur
+  // Mac et Windows), quelle que soit sa longueur (« 7/10 » ou « 128/200 »).
+  const gatherersX = idleToken?.cx ?? pop.x + 12 * charWidth;
   const columnSplit = (pop.x + gatherersX) / 2;
 
   const rows: NumberToken[][] = [];
@@ -131,9 +136,11 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   const gatherers = {} as Resources;
   for (const [i, resource] of RESOURCES.entries()) {
     const row = slots[i] ?? [];
-    const left = row.filter((n) => n.cx < columnSplit).sort((a, b) => a.cx - b.cx)[0];
+    // Stock : le nombre le plus à droite avant la colonne des villageois ; une icône lue comme un
+    // chiffre (« 4 0 », « 4e 11 » pour la pierre) est à sa gauche.
+    const left = row.filter((n) => n.cx < columnSplit).sort((a, b) => b.cx - a.cx)[0];
     const right = row.filter((n) => n.cx >= columnSplit).sort((a, b) => b.cx - a.cx)[0];
-    if (row.length && !left) return null;
+    // Stock illisible (icône et compteur lus seuls, « R O ») : 0, comme une ligne non lue.
     stock[resource] = left?.value ?? 0;
     // Un compteur à 0 est grisé et peut ne pas être lu.
     gatherers[resource] = right?.value ?? 0;
@@ -149,6 +156,20 @@ function readFrom(pop: OcrToken, tokens: OcrToken[]): HudReading | null {
   // Plus de villageois que de population : lecture fausse.
   if (villagers > population) return null;
   return { population, populationMax: Number(max), idle, stock, gatherers, villagers };
+}
+
+/**
+ * Une fraction précédée d'une icône lue comme du texte (« € 8/10 » : la maison de la population)
+ * devient la fraction seule, à sa place estimée dans le texte.
+ */
+function fractionOnly(token: OcrToken): OcrToken | null {
+  const match = /^(\D+)(\d+\/\d+)$/.exec(clean(token.text));
+  if (!match) return null;
+  // Place estimée d'après le texte lu, espaces compris (« € 8/10 » : la fraction en est les 2/3).
+  const raw = token.text.trimEnd();
+  const start = raw.search(/\d+\s*\/\s*\d+$/);
+  const share = start > 0 ? start / raw.length : 0;
+  return { ...token, text: match[2], x: token.x + token.w * share, w: token.w * (1 - share) };
 }
 
 function clean(text: string): string {
