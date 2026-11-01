@@ -250,10 +250,15 @@ fn game_in_front(game: HWND) -> bool {
 type Reading = (Vec<Value>, Option<(u32, String)>, Vec<Value>);
 
 fn read_game(engine: &OcrEngine, game: &GameWindow, max_dimension: u32) -> Result<Reading, String> {
-    // Bande du haut : lignes entières (le texte compte : âge, passage d'âge).
-    let top_lines = recognize(engine, game, CLOCK_AREA, max_dimension)?;
+    // Bande du haut : lignes entières (le texte compte : âge, passage d'âge). Horloge mal lue :
+    // seconde lecture de la même capture en texte sombre sur fond clair.
+    let top_shot = capture_area(game, CLOCK_AREA, max_dimension)?;
+    let top_lines = lines_of(read_shot(engine, &top_shot, false)?);
     let top_texts: Vec<String> = top_lines.iter().map(|(line, _)| line.text.clone()).collect();
-    let clock = read_clock(&top_texts);
+    let clock = read_clock(&top_texts).or_else(|| {
+        let inverted = lines_of(read_shot(engine, &top_shot, true).ok()?);
+        read_clock(&inverted.into_iter().map(|(line, _)| line.text).collect::<Vec<_>>())
+    });
     let top_tokens = top_lines.iter().map(|(line, size)| token(line, size.0, size.1)).collect();
     // Panneau : mot par mot (les positions comptent : stock à gauche, villageois à droite).
     let hud_words = recognize_words(engine, game, HUD_AREA, max_dimension)?;
@@ -263,9 +268,9 @@ fn read_game(engine: &OcrEngine, game: &GameWindow, max_dimension: u32) -> Resul
 
 type Placed = (Word, (f64, f64));
 
-fn recognize(engine: &OcrEngine, game: &GameWindow, area: crate::common::Area, max_dimension: u32) -> Result<Vec<Placed>, String> {
-    let (lines, size) = ocr_area(engine, game, area, max_dimension)?;
-    Ok(lines.into_iter().filter_map(|words| line_word(&words)).map(|line| (line, size)).collect())
+/// Une ligne entière par ligne lue.
+fn lines_of((lines, size): Lines) -> Vec<Placed> {
+    lines.into_iter().filter_map(|words| line_word(&words)).map(|line| (line, size)).collect()
 }
 
 fn recognize_words(
@@ -285,12 +290,6 @@ fn recognize_words(
 }
 
 type Lines = (Vec<Vec<Word>>, (f64, f64));
-
-/// Capture la zone et la lit : les mots de chaque ligne, et la taille de l'image lue.
-fn ocr_area(engine: &OcrEngine, game: &GameWindow, area: crate::common::Area, max_dimension: u32) -> Result<Lines, String> {
-    let shot = capture_area(game, area, max_dimension)?;
-    read_shot(engine, &shot, false)
-}
 
 /// Pixels d'une zone, sa taille, et le facteur d'agrandissement à appliquer avant lecture.
 struct Shot {

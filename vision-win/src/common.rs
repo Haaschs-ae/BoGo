@@ -41,17 +41,42 @@ pub fn parse_clock(token: &str) -> Option<u32> {
     Some(values.iter().fold(0, |acc, v| acc * 60 + v))
 }
 
-/// L'horloge parmi les lignes lues : un mot, ou une ligne lue avec des espaces (« 02 : 05 »).
+/// L'horloge parmi les lignes lues, en tolérant les erreurs de lecture vues sous Windows :
+/// « 07•.35 » (deux-points lus comme une puce), « 307:49 » (un trait de l'interface lu « 3 »
+/// devant), « 02 : 05 » (espaces).
 pub fn read_clock(lines: &[String]) -> Option<(u32, String)> {
     for line in lines {
-        for word in line.split_whitespace() {
-            if let Some(seconds) = parse_clock(word) {
-                return Some((seconds, word.to_string()));
+        let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        for text in line.split_whitespace().chain(std::iter::once(compact.as_str())) {
+            if let Some(found) = clock_in(text) {
+                return Some(found);
             }
         }
-        let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-        if let Some(seconds) = parse_clock(&compact) {
-            return Some((seconds, compact));
+    }
+    None
+}
+
+/// Première horloge dans un texte : « m:ss », « mm:ss » ou « h:mm:ss ».
+fn clock_in(text: &str) -> Option<(u32, String)> {
+    let normalized: String = text
+        .replace("•.", ":")
+        .chars()
+        .map(|c| match c {
+            '•' | '·' | ';' => ':',
+            'O' | 'o' => '0',
+            _ => c,
+        })
+        .collect();
+    for chunk in normalized.split(|c: char| !(c.is_ascii_digit() || c == ':')) {
+        let parts: Vec<&str> = chunk.trim_matches(':').split(':').collect();
+        if !(2..=3).contains(&parts.len()) || parts.iter().any(|p| p.is_empty()) {
+            continue;
+        }
+        // Chiffres en trop devant : on garde les deux derniers (« 307 » → « 07 »).
+        let first = &parts[0][parts[0].len().saturating_sub(2)..];
+        let candidate = std::iter::once(first).chain(parts[1..].iter().copied()).collect::<Vec<_>>().join(":");
+        if let Some(seconds) = parse_clock(&candidate) {
+            return Some((seconds, candidate));
         }
     }
     None
@@ -185,6 +210,13 @@ mod tests {
         let lines = vec!["Âge I".to_string(), "02 : 05".to_string()];
         assert_eq!(read_clock(&lines), Some((125, "02:05".to_string())));
         assert_eq!(read_clock(&["Dark Age 00:53".to_string()]), Some((53, "00:53".to_string())));
+        // Erreurs de lecture vues sous Windows.
+        assert_eq!(read_clock(&["07•.35".to_string()]), Some((455, "07:35".to_string())));
+        assert_eq!(read_clock(&["307:49".to_string()]), Some((469, "07:49".to_string())));
+        assert_eq!(read_clock(&["307:52 i".to_string()]), Some((472, "07:52".to_string())));
+        assert_eq!(read_clock(&["07141".to_string()]), None);
+        assert_eq!(read_clock(&["ol•.A5".to_string()]), None);
+        assert_eq!(read_clock(&["11".to_string(), "-10".to_string()]), None);
     }
 
     #[test]

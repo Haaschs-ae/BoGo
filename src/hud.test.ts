@@ -123,6 +123,42 @@ describe("parseHud", () => {
     expect(parseHud(frame.filter((t) => t.text !== "25/70"))).toBeNull();
   });
 
+  it("lit le panneau sous Windows malgré une ligne de pierre illisible (partie enregistrée, 7:13)", () => {
+    // Reconnaissance de Windows : le « 0 » seul du stock de pierre n'est pas lu, ni les « 0 »
+    // grisés des villageois. Bâtiment sélectionné à droite (« 7000/7000 », nom du joueur).
+    const frame: OcrToken[] = [
+      { text: "6/13", x: 0.144, y: 0.36, w: 0.099, h: 0.031 },
+      { text: "0/1", x: 0.43, y: 0.36, w: 0.066, h: 0.032 },
+      { text: "28/35", x: 0.123, y: 0.495, w: 0.128, h: 0.032 },
+      { text: "17", x: 0.422, y: 0.624, w: 0.053, h: 0.029 },
+      { text: "270", x: 0.123, y: 0.629, w: 0.083, h: 0.029 },
+      { text: "7000/7000", x: 0.693, y: 0.672, w: 0.245, h: 0.03 },
+      { text: "c'", x: 0.046, y: 0.72, w: 0.045, h: 0.025 },
+      { text: "170", x: 0.123, y: 0.719, w: 0.083, h: 0.029 },
+      { text: "41", x: 0.121, y: 0.809, w: 0.051, h: 0.029 },
+      { text: "[ODGJ", x: 0.63, y: 0.957, w: 0.142, h: 0.035 },
+    ];
+    expect(parseHud(frame)).toEqual({
+      population: 28,
+      populationMax: 35,
+      idle: 0,
+      stock: { food: 270, wood: 170, gold: 41, stone: 0 },
+      gatherers: { food: 17, wood: 0, gold: 0, stone: 0 },
+      villagers: 17,
+    });
+  });
+
+  it("ne prend jamais les points de vie de la sélection pour la population (« 50/50 », Mac)", () => {
+    const frame: OcrToken[] = [
+      { text: "7/10", x: 0.116, y: 0.361, w: 0.11, h: 0.032 },
+      { text: "50/50", x: 0.688, y: 0.671, w: 0.139, h: 0.037 },
+      { text: "6", x: 0.694, y: 0.787, w: 0.029, h: 0.032 },
+      { text: "5", x: 0.694, y: 0.87, w: 0.029, h: 0.032 },
+      { text: "100", x: 0.121, y: 0.81, w: 0.087, h: 0.032 },
+    ];
+    expect(parseHud(frame)).toBeNull();
+  });
+
   it("compte 0 pour les compteurs grisés que la reconnaissance n'a pas lus", () => {
     const grayZerosMissing = startOfGame.filter((t, i) => !(t.text === "0" && t.x > 0.4) || i === 0);
     const reading = parseHud(grayZerosMissing);

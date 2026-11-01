@@ -17,6 +17,15 @@ describe("ClockTracker", () => {
     expect(clock.read(12, 2000)).toBe(12);
   });
 
+  it("ignore une heure impossible même confirmée (« 307:49 » lu sous Windows)", () => {
+    const clock = new ClockTracker();
+    clock.read(468, 0);
+    expect(clock.read(18469, 1000)).toBeNull();
+    expect(clock.read(470, 2000)).toBe(470);
+    expect(clock.read(18472, 4000)).toBeNull();
+    expect(clock.read(473, 5000)).toBe(473);
+  });
+
   it("accepte un saut confirmé par deux lectures (nouvelle partie)", () => {
     const clock = new ClockTracker();
     clock.read(600, 0);

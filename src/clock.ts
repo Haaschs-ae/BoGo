@@ -6,12 +6,16 @@ import { parseTime, type BuildOrderStep } from "./buildOrder";
  * l'heure attendue, ou si deux lectures de suite se confirment (nouvelle partie,
  * pause, rechargement).
  */
+const MAX_GAME_SECONDS = 4 * 3600;
+
 export class ClockTracker {
   private accepted: { seconds: number; at: number } | null = null;
   private pending: { seconds: number; at: number } | null = null;
 
   /** Ajoute une lecture faite à `now` (ms) ; renvoie le temps de jeu retenu, ou null. */
   read(seconds: number, now: number): number | null {
+    // Plus de 4 heures : un chiffre lu en trop (« 307:49 » sous Windows), pas une partie.
+    if (seconds > MAX_GAME_SECONDS) return null;
     if (!this.accepted || near(this.accepted, seconds, now, 3)) return this.accept(seconds, now);
     if (this.pending && near(this.pending, seconds, now, 2)) return this.accept(seconds, now);
     this.pending = { seconds, at: now };
