@@ -116,6 +116,11 @@ interface Settings {
   showNext: boolean;
   /** Enregistrer les lectures de l'écran de chaque partie dans un fichier local, pour la rejouer. */
   record: boolean;
+  /**
+   * Windows : montrer BoGo dans les streams et captures d'écran. Masqué par défaut, pour que la
+   * lecture de l'écran voie le jeu même si BoGo est posé sur le panneau des villageois.
+   */
+  streamVisible: boolean;
   /** Taille de BoGo en %, de 70 à 130 (zoom de toute l'interface). */
   scale: number;
   /** Raccourcis choisis par le joueur (les autres gardent leur valeur par défaut). */
@@ -996,11 +1001,12 @@ function loadSettings(): Settings {
       iconNames: s.iconNames !== false,
       showNext: s.showNext === true,
       record: s.record === true,
+      streamVisible: s.streamVisible === true,
       scale: clampScale(Number(s.scale ?? 100)),
       hotkeys: typeof s.hotkeys === "object" && s.hotkeys ? s.hotkeys : {},
     };
   } catch {
-    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false, scale: 100, hotkeys: {} };
+    return { profileId: "", apiKey: "", readScreen: true, translate: true, iconNames: true, showNext: false, record: false, streamVisible: false, scale: 100, hotkeys: {} };
   }
 }
 
@@ -1018,11 +1024,17 @@ function applyScale() {
   fitWindow();
 }
 
+/** Windows : BoGo visible ou non dans les streams et captures (sans effet sur Mac). */
+function applyStreamVisibility() {
+  invoke("set_capture_visible", { visible: state.settings.streamVisible }).catch(() => {});
+}
+
 function saveSettings(settings: Settings) {
   const wasReading = state.settings.readScreen;
   const previous = state.settings;
   state.settings = settings;
   store(SETTINGS_KEY, settings);
+  if (settings.streamVisible !== previous.streamVisible) applyStreamVisibility();
   if (!settings.record && previous.record) {
     invoke("set_recording", { enabled: false }).catch(() => {});
     state.recording = { path: null, error: null };
@@ -2164,6 +2176,9 @@ function settingsView(): HTMLElement {
   const record = document.createElement("input");
   record.type = "checkbox";
   record.checked = state.settings.record;
+  const streamVisible = document.createElement("input");
+  streamVisible.type = "checkbox";
+  streamVisible.checked = state.settings.streamVisible;
   const scale = document.createElement("input");
   scale.type = "range";
   scale.min = String(SCALE_MIN);
@@ -2199,6 +2214,7 @@ function settingsView(): HTMLElement {
       iconNames: iconNames.checked,
       showNext: showNext.checked,
       record: record.checked,
+      streamVisible: streamVisible.checked,
       scale: state.settings.scale,
       hotkeys: state.settings.hotkeys,
     });
@@ -2248,6 +2264,19 @@ function settingsView(): HTMLElement {
     h("label", "checkbox", iconNames, "Écrire le nom à côté des icônes peu connues (baies, bâtiments, unités…)"),
     h("label", "checkbox", showNext, "Montrer aussi l'étape suivante (« Ensuite ») pendant la partie"),
     h("label", "checkbox", record, "Enregistrer mes parties (lectures de l'écran) pour les rejouer et régler BoGo hors ligne"),
+    IS_MAC
+      ? ""
+      : h(
+          "div",
+          "",
+          h("label", "checkbox", streamVisible, "Montrer BoGo dans mes streams et captures d'écran"),
+          h(
+            "p",
+            "hint",
+            "Masqué par défaut. Si tu le montres, garde BoGo loin de l'horloge (en haut au centre) et du panneau " +
+              "des villageois (en bas à gauche) : posé dessus, il les cacherait à la lecture de l'écran.",
+          ),
+        ),
     recordingStatus(),
     features().liveCounts ? stepLog() : "",
     save,
@@ -2302,6 +2331,7 @@ if (!state.settings.profileId) state.view = "settings";
 setHotkeys(state.settings.hotkeys);
 render();
 if (state.settings.scale !== 100) applyScale();
+if (state.settings.streamVisible) applyStreamVisibility();
 // Redessin une fois les raccourcis en place : ceux que le système refuse s'affichent dans ⚙.
 const hotkeysReady = registerHotkeys().then(render);
 pollGame();

@@ -351,18 +351,24 @@ mod windows {
     use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SetWindowDisplayAffinity, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, WDA_EXCLUDEFROMCAPTURE,
+        SWP_NOSIZE, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
     };
 
     /// L'overlay n'apparaît pas dans les captures d'écran : la lecture de l'écran (bogo-vision)
     /// voit le jeu même quand BoGo est posé sur le panneau des villageois.
     pub fn exclude_from_capture(app: &AppHandle) {
+        set_capture_visible(app, false);
+    }
+
+    /// Montre (réglage « Montrer BoGo dans mes streams ») ou cache l'overlay des captures.
+    pub fn set_capture_visible(app: &AppHandle, visible: bool) {
         let Some(window) = app.get_webview_window("overlay") else {
             return;
         };
         if let Ok(hwnd) = window.hwnd() {
+            let affinity = if visible { WDA_NONE } else { WDA_EXCLUDEFROMCAPTURE };
             unsafe {
-                SetWindowDisplayAffinity(hwnd.0 as HWND, WDA_EXCLUDEFROMCAPTURE);
+                SetWindowDisplayAffinity(hwnd.0 as HWND, affinity);
             }
         }
     }
@@ -403,6 +409,16 @@ mod windows {
     }
 }
 
+/// Windows : BoGo visible (ou non) dans les streams et captures d'écran. Sans effet ailleurs :
+/// sur Mac, la lecture de l'écran ne capture que la fenêtre de GeForce Now.
+#[tauri::command]
+fn set_capture_visible(app: AppHandle, visible: bool) {
+    #[cfg(windows)]
+    windows::set_capture_visible(&app, visible);
+    #[cfg(not(windows))]
+    let _ = (app, visible);
+}
+
 #[tauri::command]
 fn quit(app: AppHandle, vision: State<Vision>) {
     stop_vision(vision);
@@ -439,7 +455,8 @@ pub fn run() {
             journal_write,
             translate_texts,
             quit,
-            restart
+            restart,
+            set_capture_visible
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

@@ -45,7 +45,8 @@ puis « Exécuter quand même ». Sous Windows :
 - **lecture de l'écran** (nouvelle, à l'essai) : BoGo lit l'horloge et le panneau des villageois
   du jeu installé (Steam, Xbox) ou de GeForce Now, avec la reconnaissance de texte intégrée à
   Windows (il faut l'anglais parmi les langues de Windows). Il ne lit que quand le jeu est au
-  premier plan, et BoGo lui-même n'apparaît pas dans les captures d'écran (ni dans un stream) ;
+  premier plan, et BoGo lui-même n'apparaît pas dans les captures d'écran ni dans un stream
+  (sauf si tu coches « Montrer BoGo dans mes streams » dans ⚙) ;
 - raccourcis **Ctrl+Maj** au lieu de Ctrl+Alt (Ctrl+Alt+lettre = AltGr sous Windows en AZERTY ;
   Ctrl+Maj+→ étape suivante, Ctrl+Maj+L verrouiller…),
   modifiables dans ⚙ comme sur Mac ;

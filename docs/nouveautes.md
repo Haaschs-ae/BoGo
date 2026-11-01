@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.1
+
+- Windows : option « Montrer BoGo dans mes streams et captures d'écran » dans ⚙ (masqué par défaut).
+
 ## 0.3.0
 
 - Windows : lecture de l'écran (à l'essai). BoGo lit l'horloge et le panneau des villageois du jeu (Steam, Xbox ou GeForce Now) et avance tout seul, comme sur Mac. Active-la dans ⚙.
