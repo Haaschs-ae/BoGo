@@ -1288,7 +1288,7 @@ function modePill(): HTMLElement {
   return pill;
 }
 
-type ReadingState = "ok" | "clock" | "off" | "stopped" | "waiting" | "manual";
+type ReadingState = "ok" | "clock" | "off" | "background" | "stopped" | "waiting" | "manual";
 
 /** État de la lecture de l'écran, toujours visible en partie : jamais de chiffres périmés présentés comme en direct. */
 function readingState(now = Date.now()): ReadingState {
@@ -1296,6 +1296,8 @@ function readingState(now = Date.now()): ReadingState {
   if (state.vision.error) return "stopped";
   if (hudIsFresh(now)) return "ok";
   if (clock.current(now) !== null) return "clock";
+  // Windows : la lecture attend que le jeu revienne au premier plan.
+  if (state.vision.status === "background") return "background";
   return state.hud ? "off" : "waiting";
 }
 
@@ -1307,6 +1309,7 @@ function readingBadge(reading: ReadingState, boName: string): HTMLElement {
     ok: ["ok", time, "Lecture de l'écran OK"],
     clock: ["warn", time, "Horloge lue, mais panneau des villageois illisible : BoGo suit l'horloge du BO"],
     off: ["warn", "Lecture coupée", `Plus rien n'est lu à l'écran : avance avec ${KEYS.next}`],
+    background: ["warn", "Jeu en arrière-plan", "Le jeu n'est pas au premier plan : la lecture reprend dès que tu reviens dessus"],
     stopped: ["bad", "Lecture arrêtée", state.vision.error ?? ""],
     waiting: ["wait", boName, "En attente de la première lecture de l'écran"],
     manual: ["manual", boName, `Suivi manuel : ${KEYS.next} étape suivante`],
@@ -1343,6 +1346,7 @@ function playView(saved: SavedBuild): HTMLElement {
   const reading = readingState();
   if (modeNotice && Date.now() < modeNotice.until) view.append(h("div", "alert warn", modeNotice.text));
   if (reading === "off") view.append(h("div", "alert warn", `Suivi auto coupé : avance avec ${KEYS.next}`));
+  if (reading === "background") view.append(h("div", "alert warn", "Reviens sur le jeu : la lecture de l'écran reprendra toute seule"));
   if (reading === "stopped") view.append(h("div", "alert", "Lecture de l'écran arrêtée : voir ⚙"));
   const alert = f.alerts ? alertBanner(live.engine, live.hud) : null;
   if (alert) view.append(alert);

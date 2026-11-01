@@ -7,6 +7,7 @@ Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la ban
 
 - Windows : le panneau des villageois est lu même quand la ligne de pierre (un « 0 » seul) ne l'est pas ; les villageois par ressource ne sont plus coupés.
 - Windows : horloge mieux lue (« 07•.35 », « 307:49 » corrigés) ; une heure impossible n'est jamais retenue.
+- Windows : quand le jeu n'est pas au premier plan, BoGo l'affiche (« Jeu en arrière-plan ») au lieu de « Lecture coupée ».
 - Mac et Windows : les points de vie d'une unité sélectionnée (« 50/50 ») ne sont plus pris pour la population ; les comptes de 10 villageois et plus sur une ressource sont lus en fin de partie.
 
 ## 0.3.3
