@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.7
+
+- Mac : lecture renforcée du panneau des villageois, comme sous Windows (seconde lecture en texte sombre sur fond clair, chiffres seuls de la colonne des villageois lus ensemble).
+
 ## 0.3.6
 
 - Bouton ↺ pour recommencer le BO à l'étape 1 (en partie et sur la pastille « BO terminé »).

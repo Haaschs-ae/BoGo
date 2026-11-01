@@ -90,4 +90,10 @@ Une ligne par décision, avec sa date et sa raison, pour ne pas la rediscuter sa
   premier plan (sinon on lirait une autre fenêtre). L'overlay s'exclut des captures
   (WDA_EXCLUDEFROMCAPTURE) : il peut être posé sur le panneau sans gêner la lecture ; il
   n'apparaît pas non plus dans un stream. Plein écran exclusif détecté : rien n'est tenté.
+- **2026-11-01 · Lecture renforcée du panneau, Mac et Windows.** Le panneau est lu trois fois et
+  les lectures fusionnées : l'image telle quelle ; inversée en texte sombre sur fond clair
+  (contraste poussé) ; et les chiffres de la colonne des villageois, isolés puis alignés sur une
+  ligne (la reconnaissance saute souvent un chiffre seul). Même méthode en Rust (Windows) et en
+  Swift (Mac). Le panneau tolère une ligne de ressource illisible si les lignes lues tombent pile
+  à leur place ; jamais de lecture décalée.
 

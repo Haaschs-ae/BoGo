@@ -124,6 +124,217 @@ func readClock(_ observations: [VNRecognizedTextObservation]) -> (seconds: Int, 
     return nil
 }
 
+// ---------- Panneau des villageois : lecture renforcée ----------
+// Trois lectures du panneau, fusionnées : l'image telle quelle ; la même en texte sombre sur
+// fond clair (contraste poussé) pour ce qui aurait échappé ; et les chiffres de la colonne des
+// villageois par ressource, alignés sur une ligne (un chiffre seul, « 3 », est souvent sauté).
+// Même méthode que bogo-vision pour Windows (vision-win/src/common.rs).
+
+/// Texte lu, position en fraction de l'image lue, origine en haut à gauche.
+struct Word {
+    var text: String
+    var x: Double
+    var y: Double
+    var w: Double
+    var h: Double
+}
+
+/// Rectangle en pixels.
+struct Cell {
+    var x: Int
+    var y: Int
+    var w: Int
+    var h: Int
+}
+
+/// Colonne des villageois par ressource, en fraction de la largeur du panneau.
+let gathererColumn = (0.40, 0.55)
+
+func crop(_ image: CGImage, _ area: CGRect) -> CGImage? {
+    let w = CGFloat(image.width), h = CGFloat(image.height)
+    let pixels = CGRect(x: w * area.minX, y: h * area.minY, width: w * area.width, height: h * area.height)
+    return image.cropping(to: pixels.integral)
+}
+
+/// Mots lus dans une image ; `splitWords` : un mot par morceau séparé d'espaces (sinon une ligne).
+func recognizeWords(_ image: CGImage, splitWords: Bool) -> [Word] {
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = false
+    request.minimumTextHeight = 1.0 / 80.0
+    try? VNImageRequestHandler(cgImage: image).perform([request])
+    var words: [Word] = []
+    for observation in request.results ?? [] {
+        guard let candidate = observation.topCandidates(1).first else { continue }
+        if !splitWords {
+            let b = observation.boundingBox
+            words.append(Word(text: candidate.string, x: b.minX, y: 1 - b.maxY, w: b.width, h: b.height))
+            continue
+        }
+        let text = candidate.string
+        for part in text.split(separator: " ") {
+            guard let box = try? candidate.boundingBox(for: part.startIndex..<part.endIndex) else { continue }
+            let b = box.boundingBox
+            words.append(Word(text: String(part), x: b.minX, y: 1 - b.maxY, w: b.width, h: b.height))
+        }
+    }
+    return words
+}
+
+/// Niveaux de gris inversés, contraste poussé : texte sombre sur fond clair (1 octet par pixel).
+func invertedGray(_ image: CGImage) -> [UInt8]? {
+    let w = image.width, h = image.height
+    var pixels = [UInt8](repeating: 0, count: w * h)
+    let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+        guard let context = CGContext(
+            data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return true
+    }
+    guard drawn else { return nil }
+    for i in 0..<pixels.count {
+        let inverted = 255.0 - Double(pixels[i])
+        pixels[i] = UInt8(max(0.0, min(255.0, ((inverted - 60.0) * 255.0 / 140.0).rounded())))
+    }
+    return pixels
+}
+
+func grayImage(_ pixels: [UInt8], _ w: Int, _ h: Int) -> CGImage? {
+    guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+    return CGImage(
+        width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: w,
+        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+    )
+}
+
+/// Chiffres de la colonne des villageois : taches sombres de la taille d'un chiffre, l'icône
+/// (plus haute, ou coupée par le bord) écartée, chiffres voisins de même taille groupés.
+func digitCells(_ p: [UInt8], _ width: Int, _ height: Int, _ x0: Int, _ x1In: Int) -> [Cell] {
+    let x1 = min(x1In, width)
+    guard x0 < x1, height > 0 else { return [] }
+    var seen = [Bool](repeating: false, count: width * height)
+    var blobs: [Cell] = []
+    for y in 0..<height {
+        for x in x0..<x1 {
+            if seen[y * width + x] || p[y * width + x] >= 128 { continue }
+            var left = x, right = x, top = y, bottom = y
+            var stack = [(x, y)]
+            seen[y * width + x] = true
+            while let point = stack.popLast() {
+                let (cx, cy) = point
+                left = min(left, cx); right = max(right, cx); top = min(top, cy); bottom = max(bottom, cy)
+                for (nx, ny) in [(cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)] {
+                    if nx >= x0 && nx < x1 && ny >= 0 && ny < height && !seen[ny * width + nx] && p[ny * width + nx] < 128 {
+                        seen[ny * width + nx] = true
+                        stack.append((nx, ny))
+                    }
+                }
+            }
+            let w = right - left + 1, h = bottom - top + 1
+            let sizeOK = Double(h) >= 0.018 * Double(height) && Double(h) <= 0.06 * Double(height)
+            if sizeOK && w * 5 <= h * 6 && left > x0 {
+                blobs.append(Cell(x: left, y: top, w: w, h: h))
+            }
+        }
+    }
+    let heights = blobs.map { $0.h }.sorted()
+    if !heights.isEmpty {
+        let median = heights[heights.count / 2]
+        blobs = blobs.filter { $0.h * 4 <= median * 5 }
+    }
+    blobs.sort { ($0.y, $0.x) < ($1.y, $1.x) }
+    var cells: [Cell] = []
+    for b in blobs {
+        let joined = cells.firstIndex { c in
+            let overlap = Double(min(c.y + c.h, b.y + b.h) - max(c.y, b.y))
+            let gap = Double(b.x - (c.x + c.w))
+            let similar = max(c.h, b.h) * 4 <= min(c.h, b.h) * 5
+            return similar && overlap >= 0.5 * Double(min(c.h, b.h)) && gap <= Double(max(c.h, b.h)) && gap > -Double(b.w)
+        }
+        if let i = joined {
+            var c = cells[i]
+            let right = max(c.x + c.w, b.x + b.w), bottom = max(c.y + c.h, b.y + b.h)
+            c.x = min(c.x, b.x); c.y = min(c.y, b.y); c.w = right - c.x; c.h = bottom - c.y
+            cells[i] = c
+        } else {
+            cells.append(b)
+        }
+    }
+    return cells
+}
+
+/// Les nombres copiés côte à côte sur une ligne (fond blanc, espacés comme des mots), et la
+/// place de chacun (début, fin en x).
+func composeCells(_ p: [UInt8], _ width: Int, _ cells: [Cell]) -> (pixels: [UInt8], w: Int, h: Int, places: [(Int, Int)]) {
+    let tallest = cells.map { $0.h }.max() ?? 1
+    let pad = tallest, gap = tallest * 3 / 2
+    let ch = max(tallest + 2 * pad, 48)
+    let cw = max(pad * 2 + cells.reduce(0) { $0 + $1.w + gap }, 64)
+    var canvas = [UInt8](repeating: 255, count: cw * ch)
+    var places: [(Int, Int)] = []
+    var x = pad
+    for c in cells {
+        let top = max(0, ch - pad - c.h)
+        for row in 0..<c.h {
+            for col in 0..<c.w {
+                canvas[(top + row) * cw + x + col] = p[(c.y + row) * width + c.x + col]
+            }
+        }
+        places.append((x, x + c.w))
+        x += c.w + gap
+    }
+    return (canvas, cw, ch, places)
+}
+
+/// Part de la plus petite des deux boîtes couverte par l'autre.
+func overlap(_ a: Word, _ b: Word) -> Double {
+    let w = min(a.x + a.w, b.x + b.w) - max(a.x, b.x)
+    let h = min(a.y + a.h, b.y + b.h) - max(a.y, b.y)
+    let smaller = min(a.w * a.h, b.w * b.h)
+    return w <= 0 || h <= 0 || smaller <= 0 ? 0 : w * h / smaller
+}
+
+/// Tous les mots de la première lecture, plus ceux de la seconde qui ne recouvrent rien.
+func mergeWords(_ first: [Word], _ second: [Word]) -> [Word] {
+    var words = first
+    for word in second where !words.contains(where: { overlap($0, word) > 0.3 }) {
+        words.append(word)
+    }
+    return words
+}
+
+/// Panneau des villageois lu trois fois (voir plus haut), en jetons pour BoGo.
+func readHud(_ image: CGImage) -> [[String: Any]] {
+    guard let panel = crop(image, hudArea) else { return [] }
+    var words = recognizeWords(panel, splitWords: false)
+    let (w, h) = (panel.width, panel.height)
+    if let gray = invertedGray(panel) {
+        if let inverted = grayImage(gray, w, h) {
+            words = mergeWords(words, recognizeWords(inverted, splitWords: false))
+        }
+        let cells = digitCells(gray, w, h, Int(Double(w) * gathererColumn.0), Int(Double(w) * gathererColumn.1))
+        let line: (pixels: [UInt8], w: Int, h: Int, places: [(Int, Int)])? = cells.isEmpty ? nil : composeCells(gray, w, cells)
+        if let line = line, let lineImage = grayImage(line.pixels, line.w, line.h) {
+            var column: [Word] = []
+            for word in recognizeWords(lineImage, splitWords: true) {
+                let start = word.x * Double(line.w), end = (word.x + word.w) * Double(line.w)
+                let hits = line.places.indices.filter { Double(line.places[$0].1) > start && Double(line.places[$0].0) < end }
+                guard hits.count == 1 else { continue }
+                let c = cells[hits[0]]
+                column.append(Word(
+                    text: word.text, x: Double(c.x) / Double(w), y: Double(c.y) / Double(h),
+                    w: Double(c.w) / Double(w), h: Double(c.h) / Double(h)
+                ))
+            }
+            words = mergeWords(column, words)
+        }
+    }
+    return words.map { ["text": $0.text, "x": $0.x, "y": $0.y, "w": $0.w, "h": $0.h] }
+}
+
 /// Erreur envoyée une fois tant qu'elle se répète ; le statut suivant sera renvoyé.
 func emitError(_ code: String, _ message: String) {
     guard lastStatus != "error:\(code)" else { return }
@@ -151,7 +362,7 @@ func run() async {
                 } else {
                     emitStatus("no_clock")
                 }
-                emit(["type": "hud", "tokens": tokens(recognizeText(in: image, area: hudArea))])
+                emit(["type": "hud", "tokens": readHud(image)])
             } else if lastStatus != "no_window" {
                 lastStatus = "no_window"
                 emit(["type": "status", "code": "no_window", "apps": visibleApps])
