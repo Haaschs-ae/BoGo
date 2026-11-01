@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.3
+
+- Windows : le panneau des villageois est lu deux fois, dont une en texte sombre sur fond clair (ce que la lecture de Windows lit le mieux). Avant, seul un nombre sur dix y était lu.
+
 ## 0.3.2
 
 - Windows : la mise à jour ne bloque plus sur « Erreur lors de l'ouverture du fichier en écriture : bogo-vision.exe ». La lecture de l'écran s'arrête avec BoGo et avant chaque installation.

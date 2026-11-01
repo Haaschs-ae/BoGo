@@ -130,6 +130,46 @@ pub fn scale_gray(bgra: &[u8], width: u32, height: u32, factor: u32) -> Vec<u8> 
     out
 }
 
+/// Passe une image en niveaux de gris (sortie de `scale_gray`) en texte sombre sur fond clair,
+/// contraste poussé : la reconnaissance de Windows, faite pour les documents, lit mal le texte
+/// clair du jeu sur fond sombre. Le fond sombre du panneau devient blanc, le texte noir.
+pub fn invert_contrast(gray: &mut [u8]) {
+    for pixel in gray.chunks_exact_mut(4) {
+        let inverted = 255.0 - pixel[0] as f32;
+        let v = ((inverted - 60.0) * 255.0 / 140.0).round().clamp(0.0, 255.0) as u8;
+        pixel[0] = v;
+        pixel[1] = v;
+        pixel[2] = v;
+    }
+}
+
+/// Mots de deux lectures de la même image : tous ceux de la première, plus ceux de la seconde
+/// qui ne recouvrent aucun mot déjà gardé (un même chiffre lu deux fois ne compte qu'une fois).
+pub fn merge_words(first: Vec<Word>, second: Vec<Word>) -> Vec<Word> {
+    let mut words = first;
+    for word in second {
+        if !words.iter().any(|kept| overlap(kept, &word) > 0.3) {
+            words.push(word);
+        }
+    }
+    words
+}
+
+/// Part de la plus petite des deux boîtes couverte par l'autre.
+fn overlap(a: &Word, b: &Word) -> f64 {
+    let w = (a.x + a.w).min(b.x + b.w) - a.x.max(b.x);
+    let h = (a.y + a.h).min(b.y + b.h) - a.y.max(b.y);
+    if w <= 0.0 || h <= 0.0 {
+        return 0.0;
+    }
+    let smaller = (a.w * a.h).min(b.w * b.h);
+    if smaller <= 0.0 {
+        0.0
+    } else {
+        w * h / smaller
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,6 +202,24 @@ mod tests {
         let t = token(&a, 100.0, 200.0);
         assert_eq!(t["x"], 0.1);
         assert_eq!(t["h"], 0.05);
+    }
+
+    #[test]
+    fn texte_sombre_sur_fond_clair() {
+        // Fond sombre du panneau (40), texte blanc (230), chiffre grisé (110).
+        let mut img = vec![40, 40, 40, 255, 230, 230, 230, 255, 110, 110, 110, 255];
+        invert_contrast(&mut img);
+        assert_eq!(&img[0..4], &[255, 255, 255, 255]);
+        assert_eq!(&img[4..8], &[0, 0, 0, 255]);
+        assert!(img[8] > 100 && img[8] < 220);
+    }
+
+    #[test]
+    fn fusion_de_deux_lectures() {
+        let w = |text: &str, x: f64| Word { text: text.into(), x, y: 0.0, w: 10.0, h: 10.0 };
+        let merged = merge_words(vec![w("56", 0.0)], vec![w("5G", 1.0), w("6", 40.0)]);
+        let texts: Vec<&str> = merged.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(texts, ["56", "6"]);
     }
 
     #[test]

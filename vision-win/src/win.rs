@@ -25,7 +25,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IsWindowVisible, GA_ROOT,
 };
 
-use crate::common::{area_pixels, line_word, read_clock, scale_gray, token, upscale_factor, Word, CLOCK_AREA, HUD_AREA};
+use crate::common::{
+    area_pixels, invert_contrast, line_word, merge_words, read_clock, scale_gray, token, upscale_factor, Word,
+    CLOCK_AREA, HUD_AREA,
+};
 
 /// Taille d'image au-delà de laquelle la reconnaissance de Windows refuse de lire.
 const FALLBACK_MAX_DIMENSION: u32 = 2600;
@@ -271,22 +274,46 @@ fn recognize_words(
     area: crate::common::Area,
     max_dimension: u32,
 ) -> Result<Vec<Placed>, String> {
-    let (lines, size) = ocr_area(engine, game, area, max_dimension)?;
-    Ok(lines.into_iter().flatten().map(|word| (word, size)).collect())
+    // Deux lectures de la même capture : texte sombre sur fond clair d'abord (ce que la
+    // reconnaissance de Windows lit le mieux), puis l'image telle quelle pour ce qui aurait
+    // échappé à la première.
+    let shot = capture_area(game, area, max_dimension)?;
+    let (inverted, size) = read_shot(engine, &shot, true)?;
+    let (plain, _) = read_shot(engine, &shot, false)?;
+    let words = merge_words(inverted.into_iter().flatten().collect(), plain.into_iter().flatten().collect());
+    Ok(words.into_iter().map(|word| (word, size)).collect())
 }
 
-/// Capture la zone, l'agrandit, la lit : les mots de chaque ligne, et la taille de l'image lue.
-fn ocr_area(
-    engine: &OcrEngine,
-    game: &GameWindow,
-    area: crate::common::Area,
-    max_dimension: u32,
-) -> Result<(Vec<Vec<Word>>, (f64, f64)), String> {
+type Lines = (Vec<Vec<Word>>, (f64, f64));
+
+/// Capture la zone et la lit : les mots de chaque ligne, et la taille de l'image lue.
+fn ocr_area(engine: &OcrEngine, game: &GameWindow, area: crate::common::Area, max_dimension: u32) -> Result<Lines, String> {
+    let shot = capture_area(game, area, max_dimension)?;
+    read_shot(engine, &shot, false)
+}
+
+/// Pixels d'une zone, sa taille, et le facteur d'agrandissement à appliquer avant lecture.
+struct Shot {
+    pixels: Vec<u8>,
+    width: u32,
+    height: u32,
+    factor: u32,
+}
+
+fn capture_area(game: &GameWindow, area: crate::common::Area, max_dimension: u32) -> Result<Shot, String> {
     let (x, y, w, h) = area_pixels(area, game.left, game.top, game.width, game.height);
     let pixels = capture_screen(x, y, w, h)?;
     let factor = upscale_factor(w as u32, h as u32, max_dimension);
-    let image = scale_gray(&pixels, w as u32, h as u32, factor);
-    let (iw, ih) = (w as u32 * factor, h as u32 * factor);
+    Ok(Shot { pixels, width: w as u32, height: h as u32, factor })
+}
+
+/// Agrandit la capture en niveaux de gris (inversée : texte sombre sur fond clair) et la lit.
+fn read_shot(engine: &OcrEngine, shot: &Shot, inverted: bool) -> Result<Lines, String> {
+    let mut image = scale_gray(&shot.pixels, shot.width, shot.height, shot.factor);
+    if inverted {
+        invert_contrast(&mut image);
+    }
+    let (iw, ih) = (shot.width * shot.factor, shot.height * shot.factor);
     let lines = ocr(engine, &image, iw, ih).map_err(|e| format!("lecture du texte impossible ({e})"))?;
     Ok((lines, (iw as f64, ih as f64)))
 }
