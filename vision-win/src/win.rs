@@ -26,8 +26,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::common::{
-    area_pixels, invert_contrast, line_word, merge_words, read_clock, scale_gray, token, upscale_factor, Word,
-    CLOCK_AREA, HUD_AREA,
+    area_pixels, compose_cells, digit_cells, invert_contrast, line_word, merge_words, place_words, read_clock,
+    scale_gray, token, upscale_factor, Word, CLOCK_AREA, GATHERER_COLUMN, HUD_AREA,
 };
 
 /// Taille d'image au-delà de laquelle la reconnaissance de Windows refuse de lire.
@@ -282,11 +282,33 @@ fn recognize_words(
     // Deux lectures de la même capture : texte sombre sur fond clair d'abord (ce que la
     // reconnaissance de Windows lit le mieux), puis l'image telle quelle pour ce qui aurait
     // échappé à la première.
+    // Enfin, les chiffres seuls de la colonne des villageois (« 3 »), que Windows saute : alignés
+    // sur une ligne, lus, remis à leur place. Ils passent avant les autres lectures.
     let shot = capture_area(game, area, max_dimension)?;
-    let (inverted, size) = read_shot(engine, &shot, true)?;
-    let (plain, _) = read_shot(engine, &shot, false)?;
-    let words = merge_words(inverted.into_iter().flatten().collect(), plain.into_iter().flatten().collect());
-    Ok(words.into_iter().map(|word| (word, size)).collect())
+    let plain_image = scale_gray(&shot.pixels, shot.width, shot.height, shot.factor);
+    let mut inverted_image = plain_image.clone();
+    invert_contrast(&mut inverted_image);
+    let (iw, ih) = (shot.width * shot.factor, shot.height * shot.factor);
+    let read = |image: &[u8], w: u32, h: u32| ocr(engine, image, w, h).map_err(|e| format!("lecture du texte impossible ({e})"));
+    let inverted: Vec<Word> = read(&inverted_image, iw, ih)?.into_iter().flatten().collect();
+    let plain: Vec<Word> = read(&plain_image, iw, ih)?.into_iter().flatten().collect();
+    let (x0, x1) = GATHERER_COLUMN;
+    let cells = digit_cells(
+        &inverted_image,
+        iw as usize,
+        ih as usize,
+        (iw as f64 * x0) as usize,
+        (iw as f64 * x1) as usize,
+    );
+    let column = if cells.is_empty() {
+        Vec::new()
+    } else {
+        let (canvas, cw, ch, places) = compose_cells(&inverted_image, iw as usize, &cells);
+        let line: Vec<Word> = read(&canvas, cw as u32, ch as u32)?.into_iter().flatten().collect();
+        place_words(&line, &cells, &places)
+    };
+    let words = merge_words(column, merge_words(inverted, plain));
+    Ok(words.into_iter().map(|word| (word, (iw as f64, ih as f64))).collect())
 }
 
 type Lines = (Vec<Vec<Word>>, (f64, f64));

@@ -195,6 +195,141 @@ fn overlap(a: &Word, b: &Word) -> f64 {
     }
 }
 
+/// Rectangle en pixels d'une image.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cell {
+    pub x: usize,
+    pub y: usize,
+    pub w: usize,
+    pub h: usize,
+}
+
+/// Colonne des villageois par ressource, en fraction de la largeur du panneau lu.
+pub const GATHERER_COLUMN: (f64, f64) = (0.40, 0.55);
+
+/// Chiffres de la colonne des villageois par ressource (image en texte sombre sur fond clair,
+/// voir `invert_contrast`) : taches sombres de la taille d'un chiffre, groupées en nombres
+/// (« 17 », « 0/1 »). La reconnaissance de Windows saute les chiffres isolés ; on les lui
+/// présentera alignés sur une ligne (`compose_cells`).
+pub fn digit_cells(image: &[u8], width: usize, height: usize, x0: usize, x1: usize) -> Vec<Cell> {
+    let x1 = x1.min(width);
+    if x0 >= x1 || height == 0 {
+        return Vec::new();
+    }
+    let dark = |x: usize, y: usize| image[(y * width + x) * 4] < 128;
+    let mut seen = vec![false; width * height];
+    let mut blobs: Vec<Cell> = Vec::new();
+    for y in 0..height {
+        for x in x0..x1 {
+            if seen[y * width + x] || !dark(x, y) {
+                continue;
+            }
+            // Tache sombre : remplissage par voisinage (4 directions).
+            let (mut left, mut right, mut top, mut bottom) = (x, x, y, y);
+            let mut stack = vec![(x, y)];
+            seen[y * width + x] = true;
+            while let Some((cx, cy)) = stack.pop() {
+                left = left.min(cx);
+                right = right.max(cx);
+                top = top.min(cy);
+                bottom = bottom.max(cy);
+                let neighbours = [
+                    (cx.wrapping_sub(1), cy),
+                    (cx + 1, cy),
+                    (cx, cy.wrapping_sub(1)),
+                    (cx, cy + 1),
+                ];
+                for (nx, ny) in neighbours {
+                    if nx >= x0 && nx < x1 && ny < height && !seen[ny * width + nx] && dark(nx, ny) {
+                        seen[ny * width + nx] = true;
+                        stack.push((nx, ny));
+                    }
+                }
+            }
+            let (w, h) = (right - left + 1, bottom - top + 1);
+            let size_ok = (h as f64) >= 0.018 * height as f64 && (h as f64) <= 0.06 * height as f64;
+            // Une tache coupée par le bord gauche est l'icône du villageois, pas un chiffre.
+            if size_ok && w <= h * 6 / 5 && left > x0 {
+                blobs.push(Cell { x: left, y: top, w, h });
+            }
+        }
+    }
+    // L'icône du villageois dans sa case est plus haute que les chiffres : on l'écarte.
+    let mut heights: Vec<usize> = blobs.iter().map(|b| b.h).collect();
+    heights.sort_unstable();
+    if let Some(&median) = heights.get(heights.len() / 2) {
+        blobs.retain(|b| b.h * 4 <= median * 5);
+    }
+    // Chiffres voisins de même taille sur une même ligne : un seul nombre.
+    blobs.sort_by_key(|b| (b.y, b.x));
+    let mut cells: Vec<Cell> = Vec::new();
+    for blob in blobs {
+        let joined = cells.iter_mut().find(|c| {
+            let overlap = (c.y + c.h).min(blob.y + blob.h) as f64 - c.y.max(blob.y) as f64;
+            let gap = blob.x as f64 - (c.x + c.w) as f64;
+            let similar = c.h.max(blob.h) * 4 <= c.h.min(blob.h) * 5;
+            similar && overlap >= 0.5 * c.h.min(blob.h) as f64 && gap <= c.h.max(blob.h) as f64 && gap > -(blob.w as f64)
+        });
+        match joined {
+            Some(cell) => {
+                let (right, bottom) = ((cell.x + cell.w).max(blob.x + blob.w), (cell.y + cell.h).max(blob.y + blob.h));
+                cell.x = cell.x.min(blob.x);
+                cell.y = cell.y.min(blob.y);
+                cell.w = right - cell.x;
+                cell.h = bottom - cell.y;
+            }
+            None => cells.push(blob),
+        }
+    }
+    cells
+}
+
+/// Les nombres trouvés, copiés côte à côte sur une ligne (fond blanc, espacés comme des mots) :
+/// la reconnaissance de Windows lit bien une ligne de mots, mal un chiffre seul. Renvoie
+/// l'image, sa taille et la place de chaque nombre sur la ligne (début, fin en x).
+pub fn compose_cells(image: &[u8], width: usize, cells: &[Cell]) -> (Vec<u8>, usize, usize, Vec<(usize, usize)>) {
+    let tallest = cells.iter().map(|c| c.h).max().unwrap_or(1);
+    let pad = tallest;
+    let gap = tallest * 3 / 2;
+    let canvas_h = (tallest + 2 * pad).max(48);
+    let canvas_w = (pad * 2 + cells.iter().map(|c| c.w + gap).sum::<usize>()).max(64);
+    let mut canvas = vec![255u8; canvas_w * canvas_h * 4];
+    let mut places = Vec::new();
+    let mut x = pad;
+    for cell in cells {
+        // Bas des nombres alignés, comme sur une ligne de texte.
+        let top = (canvas_h - pad).saturating_sub(cell.h);
+        for row in 0..cell.h {
+            let from = ((cell.y + row) * width + cell.x) * 4;
+            let to = ((top + row) * canvas_w + x) * 4;
+            canvas[to..to + cell.w * 4].copy_from_slice(&image[from..from + cell.w * 4]);
+        }
+        places.push((x, x + cell.w));
+        x += cell.w + gap;
+    }
+    (canvas, canvas_w, canvas_h, places)
+}
+
+/// Les mots lus sur la ligne composée, remis à la place de leur nombre dans le panneau. Un mot
+/// qui couvre plusieurs nombres (lus collés) est laissé de côté.
+pub fn place_words(words: &[Word], cells: &[Cell], places: &[(usize, usize)]) -> Vec<Word> {
+    let mut placed = Vec::new();
+    for word in words {
+        let (start, end) = (word.x, word.x + word.w);
+        let hits: Vec<usize> = places
+            .iter()
+            .enumerate()
+            .filter(|(_, (a, b))| (*b as f64) > start && (*a as f64) < end)
+            .map(|(i, _)| i)
+            .collect();
+        if let [i] = hits[..] {
+            let c = cells[i];
+            placed.push(Word { text: word.text.clone(), x: c.x as f64, y: c.y as f64, w: c.w as f64, h: c.h as f64 });
+        }
+    }
+    placed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +387,59 @@ mod tests {
         let merged = merge_words(vec![w("56", 0.0)], vec![w("5G", 1.0), w("6", 40.0)]);
         let texts: Vec<&str> = merged.iter().map(|w| w.text.as_str()).collect();
         assert_eq!(texts, ["56", "6"]);
+    }
+
+    /// Image blanche w × h où l'on peint des rectangles noirs (chiffres simulés).
+    fn image(w: usize, h: usize, rects: &[(usize, usize, usize, usize)]) -> Vec<u8> {
+        let mut img = vec![255u8; w * h * 4];
+        for &(x, y, rw, rh) in rects {
+            for yy in y..y + rh {
+                for xx in x..x + rw {
+                    img[(yy * w + xx) * 4..(yy * w + xx) * 4 + 3].copy_from_slice(&[0, 0, 0]);
+                }
+            }
+        }
+        img
+    }
+
+    #[test]
+    fn chiffres_de_la_colonne_des_villageois() {
+        // Panneau 600 × 750 : icône coupée par le bord gauche de la colonne (x 240), un « 3 »,
+        // un « 17 » (deux chiffres voisins), une tache trop petite (bruit), une trop grande.
+        let img = image(
+            600,
+            750,
+            &[(236, 450, 10, 26), (255, 460, 12, 19), (255, 520, 9, 19), (268, 520, 12, 19), (260, 600, 3, 3), (250, 650, 30, 60)],
+        );
+        let cells = digit_cells(&img, 600, 750, 240, 330);
+        assert_eq!(cells, vec![Cell { x: 255, y: 460, w: 12, h: 19 }, Cell { x: 255, y: 520, w: 25, h: 19 }]);
+        // Icône plus haute que les chiffres, juste à gauche d'un « 6 » : jamais collée au chiffre.
+        let img = image(600, 750, &[(245, 455, 10, 26), (262, 460, 12, 19), (255, 520, 12, 19), (255, 580, 12, 19)]);
+        let cells = digit_cells(&img, 600, 750, 240, 330);
+        assert_eq!(cells[0], Cell { x: 262, y: 460, w: 12, h: 19 });
+        assert_eq!(cells.len(), 3);
+    }
+
+    #[test]
+    fn ligne_composee_et_mots_remis_en_place() {
+        let img = image(600, 750, &[(255, 460, 12, 19), (255, 520, 9, 19), (268, 520, 12, 19)]);
+        let cells = digit_cells(&img, 600, 750, 240, 330);
+        let (canvas, w, h, places) = compose_cells(&img, 600, &cells);
+        assert_eq!(canvas.len(), w * h * 4);
+        assert_eq!(places.len(), 2);
+        // Les nombres sont copiés noirs sur fond blanc, séparés.
+        let (a, b) = places[0];
+        assert!(b <= places[1].0);
+        // Bas aligné à une marge (la hauteur d'un chiffre) du bas de la ligne.
+        assert_eq!(canvas[((h - 19 - 19) * w + a) * 4], 0);
+        assert_eq!(canvas[0], 255);
+        // « 3 » et « 17 » lus sur la ligne reviennent à leur place ; un mot à cheval est ignoré.
+        let word = |text: &str, x: usize, ww: usize| Word { text: text.into(), x: x as f64, y: 10.0, w: ww as f64, h: 19.0 };
+        let read = [word("3", a, b - a), word("17", places[1].0, places[1].1 - places[1].0), word("317", a, places[1].1 - a)];
+        let placed = place_words(&read, &cells, &places);
+        assert_eq!(placed.len(), 2);
+        assert_eq!((placed[0].text.as_str(), placed[0].y), ("3", 460.0));
+        assert_eq!((placed[1].text.as_str(), placed[1].y), ("17", 520.0));
     }
 
     #[test]

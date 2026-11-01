@@ -3,6 +3,10 @@
 Chaque section « ## X.Y.Z » devient le texte de la version publiée, et la bannière
 « Mettre à jour » de BoGo en montre les premières lignes.
 
+## 0.3.5
+
+- Windows : les villageois par ressource à un seul chiffre (« 3 ») sont lus. BoGo les isole, les aligne sur une ligne et les fait lire ensemble : la lecture de Windows sautait les chiffres seuls.
+
 ## 0.3.4
 
 - Windows : le panneau des villageois est lu même quand la ligne de pierre (un « 0 » seul) ne l'est pas ; les villageois par ressource ne sont plus coupés.
