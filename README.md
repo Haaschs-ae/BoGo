@@ -33,7 +33,8 @@ versions publiées sont sur la page **Releases** du dépôt ([publier](docs/publ
 BoGo n'a pas d'icône dans le Dock : c'est une fenêtre flottante. Pour le fermer, ✕ puis
 « Quitter ? » (partout : en partie, dans la bibliothèque, sur la pastille « BO terminé ») ; pour
 seulement le masquer, Ctrl+Alt+B (ou ton raccourci). À la fin du BO, BoGo se déverrouille pour que la
-pastille réponde aux clics.
+pastille réponde aux clics. Partie suivante : ↺ reprend le BO à l'étape 1 (BoGo le fait tout seul
+quand l'horloge du jeu repart de 0:00).
 
 ### Windows (expérimental)
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildOrderStep } from "./buildOrder";
-import { ClockTracker, formatClock, stepForClock } from "./clock";
+import { ClockTracker, formatClock, isNewGame, stepForClock } from "./clock";
 
 describe("ClockTracker", () => {
   it("retient une suite de lectures cohérentes", () => {
@@ -78,4 +78,14 @@ describe("stepForClock", () => {
 it("formatClock", () => {
   expect(formatClock(125)).toBe("2:05");
   expect(formatClock(0)).toBe("0:00");
+});
+
+describe("isNewGame", () => {
+  it("voit une nouvelle partie quand l'horloge repart de zéro, pas une petite correction", () => {
+    expect(isNewGame(900, 3)).toBe(true);
+    expect(isNewGame(70, 5)).toBe(true);
+    expect(isNewGame(null, 3)).toBe(false);
+    expect(isNewGame(65, 30)).toBe(false);
+    expect(isNewGame(900, 120)).toBe(false);
+  });
 });

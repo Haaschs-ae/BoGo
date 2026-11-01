@@ -54,6 +54,14 @@ export function stepForClock(steps: BuildOrderStep[], seconds: number): number |
   return index;
 }
 
+/**
+ * L'horloge du jeu repart du début : nouvelle partie (au moins une minute de moins, et moins
+ * d'une minute et demie de jeu). `before` : dernier temps retenu, null si aucun.
+ */
+export function isNewGame(before: number | null, seconds: number): boolean {
+  return before !== null && before >= seconds + 60 && seconds < 90;
+}
+
 /** 125 → "2:05". */
 export function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));

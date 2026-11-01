@@ -16,7 +16,7 @@ import {
 } from "./buildOrder";
 import { CIVILIZATIONS } from "./civs";
 import { flagUrl } from "./flags";
-import { ClockTracker, formatClock, stepForClock } from "./clock";
+import { ClockTracker, formatClock, isNewGame, stepForClock } from "./clock";
 import { heroModel, iconLabel, isWellKnownIcon, stepLandmark } from "./display";
 import {
   AGE_NAMES,
@@ -344,6 +344,23 @@ function play(id: string, how: LaunchHow = "choice") {
   if (state.settings.record && saved) {
     startRecording().then(() => recordEvent({ type: "bo", id: saved.id, build: saved.build }));
   }
+}
+
+/**
+ * Nouvelle partie avec le même BO : retour à l'étape 1 (bouton ↺, ou horloge du jeu repartie de
+ * zéro). Comme un nouveau lancement : journal, enregistrement, verrouillage.
+ */
+function restartBuild(notice?: string) {
+  const saved = current();
+  if (!saved) return;
+  play(saved.id, "pre");
+  if (notice) modeNotice = { text: notice, until: Date.now() + 6000 };
+  render();
+}
+
+/** Bouton ↺ : recommencer le BO à l'étape 1. */
+function restartButton(): HTMLElement {
+  return button("↺", "Recommencer le BO à l'étape 1 (nouvelle partie)", () => restartBuild());
 }
 
 /** Nouveau fichier d'enregistrement (un par BO lancé) ; ne fait jamais échouer le lancement. */
@@ -897,6 +914,9 @@ async function startVision(keepError = false) {
   }
 }
 
+/** Dernier temps de jeu retenu (même ancien) : pour voir l'horloge repartir de zéro. */
+let lastGameSeconds: number | null = null;
+
 /** Texte lu en haut au centre (âge, passage d'âge en cours), affiché dans les réglages. */
 let topText = "";
 /** Applis avec des fenêtres quand GeForce Now n'a pas été trouvé (pour comprendre pourquoi). */
@@ -954,8 +974,16 @@ function onVision(event: VisionEvent) {
     return;
   }
   if (event.type === "clock") {
+    const before = clock.current(Date.now()) ?? lastGameSeconds;
     if (clock.read(event.seconds, Date.now()) === null) return;
     noteClock(event.seconds);
+    lastGameSeconds = event.seconds;
+    // L'horloge repart du début : nouvelle partie. Le BO en cours (ou terminé) reprend à
+    // l'étape 1, sauf si l'écran de choix du début de partie est déjà ouvert.
+    if (isNewGame(before, event.seconds) && current() && state.view === "play") {
+      restartBuild("Nouvelle partie : BO repris à l'étape 1");
+      return;
+    }
     const build = current();
     // L'horloge ne pilote le BO que si le panneau des villageois n'est pas lu, et ne fait
     // jamais reculer : un joueur en avance sur les temps du guide le reste.
@@ -1223,6 +1251,7 @@ function playHeader(saved: SavedBuild): HTMLElement {
     button("📚", "Bibliothèque", () => showLibrary()),
     button("⚙", "Réglages", () => showSettings()),
     button("▾", `Réduire (${KEYS.mini})`, () => toggleMini()),
+    restartButton(),
     lockButton(),
     quitButton(),
   );
@@ -1554,7 +1583,9 @@ function miniView(): HTMLElement {
   // Inactifs : une alerte, seulement en IA.
   const hud = features().alerts ? projectLive(features(), hudIsFresh() ? state.hud!.reading : null, null).hud : null;
   if (hud && hud.idle > 0) pill.append(h("span", "warn", gameIcon(VILLAGER_ICON, "💤"), ` ${hud.idle} inactif${hud.idle > 1 ? "s" : ""}`));
-  pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()), quitButton());
+  pill.append(button("▴", `Agrandir (${KEYS.mini})`, () => toggleMini()));
+  if (saved) pill.append(restartButton());
+  pill.append(quitButton());
   for (const child of pill.querySelectorAll("span")) child.dataset.tauriDragRegion = "";
   return pill;
 }

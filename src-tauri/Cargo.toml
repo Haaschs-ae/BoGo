@@ -1,6 +1,6 @@
 [package]
 name = "bogo"
-version = "0.3.5"
+version = "0.3.6"
 description = "Overlay de build orders pour Age of Empires IV"
 edition = "2021"
 
